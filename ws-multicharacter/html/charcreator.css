@@ -1,0 +1,132 @@
+.creator {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(14px);
+    background: rgba(26, 6, 12, 0.82);
+    padding: 40px;
+    z-index: 40;
+}
+
+.creator .panel {
+    width: min(440px, 95vw);
+    padding: 40px 38px;
+    border-radius: 32px;
+    border: 1px solid rgba(200, 70, 90, 0.4);
+    background: linear-gradient(180deg, rgba(48, 12, 20, 0.96) 0%, rgba(24, 6, 12, 0.96) 100%);
+    box-shadow: 0 45px 90px rgba(60, 12, 20, 0.6);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.creator::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 40% 35%, rgba(255, 80, 110, 0.22), transparent 55%);
+    pointer-events: none;
+}
+
+.creator-header h1 {
+    font-size: 28px;
+    margin-bottom: 6px;
+    letter-spacing: 0.8px;
+    font-weight: 700;
+}
+
+.creator-header p {
+    font-size: 14px;
+    color: rgba(222, 236, 255, 0.68);
+    letter-spacing: 0.4px;
+    line-height: 1.55;
+}
+
+.form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.form-row:not(:first-child) {
+    margin-top: 12px;
+}
+
+.form-row label {
+    font-size: 12px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: rgba(255, 210, 220, 0.75);
+    padding-left: 4px;
+}
+
+.form-row input,
+.form-row select {
+    background: rgba(50, 12, 20, 0.55);
+    border: 1px solid rgba(200, 70, 90, 0.25);
+    border-radius: 14px;
+    padding: 15px 16px;
+    font-size: 15px;
+    color: var(--text-light);
+    outline: none;
+    transition: border 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.form-row input::placeholder {
+    color: rgba(255, 210, 220, 0.45);
+}
+
+.form-row input:focus,
+.form-row select:focus {
+    border-color: rgba(255, 110, 130, 0.65);
+    box-shadow: 0 0 0 3px rgba(255, 110, 130, 0.2);
+    transform: translateY(-1px);
+}
+
+.form-row select {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, rgba(255, 210, 220, 0.4) 50%),
+        linear-gradient(135deg, rgba(255, 210, 220, 0.4) 50%, transparent 50%);
+    background-position: calc(100% - 18px) calc(50% - 4px), calc(100% - 12px) calc(50% - 4px);
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+}
+
+.form-row[data-field='nationality'] {
+    position: relative;
+}
+.form-row select option {
+    background-color: rgba(32, 8, 14, 0.95);
+    color: var(--text-light);
+}
+
+.form-actions {
+    flex-direction: row;
+    gap: 18px;
+    margin-top: 20px;
+}
+
+.form-actions .btn {
+    flex: 1;
+}
+
+.form-actions .btn.secondary {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 220, 230, 0.72);
+}
+
+.form-actions .btn.secondary:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+@media (max-width: 640px) {
+    .creator {
+        padding: 24px;
+    }
+
+    .creator .panel {
+        padding: 32px 26px;
+    }
+}

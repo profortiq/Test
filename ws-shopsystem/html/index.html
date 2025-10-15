@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WS Shop System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="app" class="app hidden">
+        <div class="app-shell">
+            <header class="app-header">
+                <div class="header-left">
+                    <div class="shop-icon">
+                        <img id="shop-icon" src="icons/default.svg" alt="Shop Icon">
+                    </div>
+                    <div class="shop-meta">
+                        <h1 id="shop-name">Shop</h1>
+                        <p id="shop-description"></p>
+                    </div>
+                </div>
+                <div class="header-center">
+                    <div class="chip">
+                        <span class="chip-label">Besitzer</span>
+                        <span class="chip-value" id="shop-owner">Niemand</span>
+                    </div>
+                    <div class="chip">
+                        <span class="chip-label">Rabatt</span>
+                        <span class="chip-value" id="shop-discount">0%</span>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <button class="btn ghost" id="btn-open-management">Verwaltung</button>
+                    <button class="btn outline" id="btn-sell-shop">Shop verkaufen</button>
+                    <button class="btn outline" id="btn-buy-shop">Shop kaufen</button>
+                    <button class="btn primary" id="btn-close">Schließen</button>
+                </div>
+            </header>
+
+            <main class="app-body">
+                <section id="shop-view" class="view">
+                    <aside class="sidebar">
+                        <nav id="category-list"></nav>
+                    </aside>
+                    <section class="products">
+                        <div class="product-grid" id="product-grid"></div>
+                    </section>
+                    <aside class="cart">
+                        <div class="cart-header">
+                            <h2>Einkaufskorb</h2>
+                            <p id="cart-info">0 Artikel</p>
+                        </div>
+                        <div class="cart-items" id="cart-items"></div>
+                        <div class="cart-footer">
+                            <div class="cart-total">
+                                <span>Gesamt</span>
+                                <span id="cart-total">$0</span>
+                            </div>
+                            <div class="cart-actions">
+                                <button class="btn secondary" data-payment="cash">Bar bezahlen</button>
+                                <button class="btn primary" data-payment="bank">Karte</button>
+                            </div>
+                        </div>
+                    </aside>
+                </section>
+
+                <section id="management-view" class="view hidden">
+                    <nav class="management-tabs" id="management-tabs"></nav>
+                    <div class="management-content">
+                        <div id="management-panel"></div>
+                    </div>
+                </section>
+
+                <section id="admin-view" class="view hidden">
+                    <h2>Shop Übersicht</h2>
+                    <div id="admin-list" class="admin-list"></div>
+                </section>
+            </main>
+
+            <footer class="app-footer">
+                <span id="footer-text">Wolfstudio Shopsystem</span>
+            </footer>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

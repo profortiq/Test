@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="#1a0b2f"/>
+  <rect x="12" y="12" width="40" height="40" rx="12" fill="#ffca3a" fill-opacity=".92"/>
+  <text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" font-family="Poppins, Arial, sans-serif" font-weight="700" font-size="20" fill="#1a0b2f">24/7</text>
+</svg>

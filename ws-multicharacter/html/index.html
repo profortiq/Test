@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WOLFSTUDIO Characters</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="reset.css" rel="stylesheet" />
+    <link href="style.css" rel="stylesheet" />
+    <link href="charselect.css" rel="stylesheet" />
+    <link href="charcreator.css" rel="stylesheet" />
+</head>
+<body>
+    <div id="loading-screen" class="loading hidden">
+        <div class="loading-ring">
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+        <p id="loading-text"></p>
+    </div>
+
+    <main id="charselect" class="charselect hidden">
+        <header class="app-header">
+            <h1 data-translate="ui_title">WOLFSTUDIO <span>Charakterverwaltung</span></h1>
+            <p data-translate="ui_subtitle">Waehle einen Charakter aus oder starte einen neuen.</p>
+        </header>
+
+        <section id="slot-wrapper" class="slot-wrapper">
+            <!-- Slots rendered by charselect.js -->
+        </section>
+
+        <footer class="charselect-footer">
+            <button id="disconnect-button" class="link-button" data-translate="disconnect">Disconnect</button>
+        </footer>
+    </main>
+
+    <section id="creator" class="creator hidden" aria-hidden="true">
+        <div class="panel">
+            <header class="creator-header">
+                <h1 data-translate="creator_title">Neuen Charakter erstellen</h1>
+                <p data-translate="creator_subtitle">Fuelle die Basisinformationen aus. Aussehen folgt anschliessend im Spiel.</p>
+            </header>
+
+            <form id="character-form" novalidate>
+                <div class="form-row">
+                    <label for="firstname" data-translate="firstname_label">Vorname</label>
+                    <input id="firstname" name="firstname" type="text" maxlength="16" autocomplete="off" placeholder="Matthew" required />
+                </div>
+
+                <div class="form-row">
+                    <label for="lastname" data-translate="lastname_label">Nachname</label>
+                    <input id="lastname" name="lastname" type="text" maxlength="16" autocomplete="off" placeholder="Harrison" required />
+                </div>
+
+                <div class="form-row" data-field="nationality">
+                    <label for="nationality-select" data-translate="nationality_label">Nationalitaet</label>
+                    <input id="nationality-input" name="nationality" type="text" class="hidden" autocomplete="off" placeholder="Germany" />
+                    <select id="nationality-select" name="nationality"></select>
+                </div>
+
+                <div class="form-row">
+                    <label for="birthdate" data-translate="birthdate_label">Geburtsdatum</label>
+                    <input id="birthdate" name="birthdate" type="date" required />
+                </div>
+
+                <div class="form-row">
+                    <label for="gender" data-translate="gender_label">Geschlecht</label>
+                    <select id="gender" name="gender" required></select>
+                </div>
+
+                <div class="form-row form-actions">
+                    <button type="button" id="cancel" class="btn secondary" data-translate="cancel">Abbrechen</button>
+                    <button type="submit" class="btn primary" data-translate="create_button">Charakter erstellen</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <script src="swal2.js"></script>
+    <script src="profanity.js"></script>
+    <script src="validation.js"></script>
+    <script src="translations.js"></script>
+    <script src="charselect.js"></script>
+    <script src="charcreator.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
