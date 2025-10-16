@@ -149,6 +149,115 @@ local function SanitizeRoutes(routes)
     return result
 end
 
+local function PersistDropoffs(shopId, dropoffs)
+    MySQL.update.await('DELETE FROM ws_shop_dropoffs WHERE shop_id = ?', { shopId })
+    for index, point in ipairs(dropoffs or {}) do
+        MySQL.insert.await('INSERT INTO ws_shop_dropoffs (shop_id, sort_index, label, x, y, z) VALUES (?, ?, ?, ?, ?, ?)', {
+            shopId,
+            index,
+            Trim(point.label),
+            tonumber(point.x) or 0.0,
+            tonumber(point.y) or 0.0,
+            tonumber(point.z) or 0.0,
+        })
+    end
+end
+
+local function PersistDepots(shopId, depots)
+    MySQL.update.await('DELETE FROM ws_shop_depots WHERE shop_id = ?', { shopId })
+    for index, point in ipairs(depots or {}) do
+        MySQL.insert.await('INSERT INTO ws_shop_depots (shop_id, sort_index, label, x, y, z, heading) VALUES (?, ?, ?, ?, ?, ?, ?)', {
+            shopId,
+            index,
+            Trim(point.label),
+            tonumber(point.x) or 0.0,
+            tonumber(point.y) or 0.0,
+            tonumber(point.z) or 0.0,
+            tonumber(point.heading) or 0.0,
+        })
+    end
+end
+
+local function PersistVehicleSpawns(shopId, spawns)
+    MySQL.update.await('DELETE FROM ws_shop_vehicle_spawns WHERE shop_id = ?', { shopId })
+    for index, point in ipairs(spawns or {}) do
+        MySQL.insert.await('INSERT INTO ws_shop_vehicle_spawns (shop_id, sort_index, label, x, y, z, heading) VALUES (?, ?, ?, ?, ?, ?, ?)', {
+            shopId,
+            index,
+            Trim(point.label),
+            tonumber(point.x) or 0.0,
+            tonumber(point.y) or 0.0,
+            tonumber(point.z) or 0.0,
+            tonumber(point.heading) or 0.0,
+        })
+    end
+end
+
+local function PersistRoutes(shopId, routes)
+    local existing = MySQL.query.await('SELECT id FROM ws_shop_routes WHERE shop_id = ?', { shopId }) or {}
+    for _, row in ipairs(existing) do
+        MySQL.update.await('DELETE FROM ws_shop_route_points WHERE route_id = ?', { row.id })
+    end
+    MySQL.update.await('DELETE FROM ws_shop_routes WHERE shop_id = ?', { shopId })
+
+    for index, route in ipairs(routes or {}) do
+        local routeId = MySQL.insert.await('INSERT INTO ws_shop_routes (shop_id, sort_index, label) VALUES (?, ?, ?)', {
+            shopId,
+            index,
+            Trim(route.label),
+        })
+        if routeId then
+            for pointIndex, point in ipairs(route.points or {}) do
+                MySQL.insert.await('INSERT INTO ws_shop_route_points (route_id, sort_index, label, x, y, z) VALUES (?, ?, ?, ?, ?, ?)', {
+                    routeId,
+                    pointIndex,
+                    Trim(point.label),
+                    tonumber(point.x) or 0.0,
+                    tonumber(point.y) or 0.0,
+                    tonumber(point.z) or 0.0,
+                })
+            end
+        end
+    end
+end
+
+local function PersistAllowedVehicles(shopId, vehicles)
+    MySQL.update.await('DELETE FROM ws_shop_allowed_vehicles WHERE shop_id = ?', { shopId })
+    for index, vehicleKey in ipairs(vehicles or {}) do
+        if type(vehicleKey) == 'string' and Config.DeliveryVehicles[vehicleKey] then
+            MySQL.insert.await('INSERT INTO ws_shop_allowed_vehicles (shop_id, sort_index, vehicle_key) VALUES (?, ?, ?)', {
+                shopId,
+                index,
+                vehicleKey,
+            })
+        end
+    end
+end
+
+local function PersistProductCategories(shopId, categories)
+    MySQL.update.await('DELETE FROM ws_shop_product_categories WHERE shop_id = ?', { shopId })
+    for index, category in ipairs(categories or {}) do
+        local trimmed = Trim(category)
+        if trimmed then
+            MySQL.insert.await('INSERT INTO ws_shop_product_categories (shop_id, sort_index, category) VALUES (?, ?, ?)', {
+                shopId,
+                index,
+                trimmed,
+            })
+        end
+    end
+end
+
+local function PersistCreatorData(shopId, creator)
+    if not shopId or not creator then return end
+    PersistDropoffs(shopId, creator.dropoffs)
+    PersistDepots(shopId, creator.depots)
+    PersistVehicleSpawns(shopId, creator.vehicleSpawns)
+    PersistRoutes(shopId, creator.routes)
+    PersistAllowedVehicles(shopId, creator.vehicles)
+    PersistProductCategories(shopId, creator.products)
+end
+
 local function SyncInventoryRecords(shop, payloadInventory)
     if not shop or type(payloadInventory) ~= 'table' then return end
     local existingRows = MySQL.query.await('SELECT id FROM ws_shop_inventory WHERE shop_id = ?', { shop.id }) or {}
@@ -297,6 +406,14 @@ local function CreateShopFromPayload(payload, src)
         end
     end
 
+    local pedModel = metadata.creator.ped and Trim(metadata.creator.ped.model)
+    local pedScenario = metadata.creator.ped and Trim(metadata.creator.ped.scenario)
+    local zone = metadata.creator.zone or {}
+    local zoneLength = tonumber(zone.length) or 2.0
+    local zoneWidth = tonumber(zone.width) or 2.0
+    local zoneMinZ = tonumber(zone.minZ) or (z - 1.0)
+    local zoneMaxZ = tonumber(zone.maxZ) or (z + 1.0)
+
     local metadataJson, metadataErr = EncodeForJson(metadata)
     if not metadataJson then
         Utils.Debug('Failed to encode metadata for new shop %s: %s', identifier, metadataErr or 'unknown')
@@ -304,7 +421,7 @@ local function CreateShopFromPayload(payload, src)
         return nil, 'metadata_encode_error'
     end
 
-    local insertId = MySQL.insert.await('INSERT INTO ws_shops (identifier, label, type, coords, heading, purchase_price, sell_price, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', {
+    local insertId = MySQL.insert.await('INSERT INTO ws_shops (identifier, label, type, coords, heading, purchase_price, sell_price, metadata, ped_model, ped_scenario, zone_length, zone_width, zone_min_z, zone_max_z) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', {
         identifier,
         label,
         typeKey,
@@ -313,12 +430,20 @@ local function CreateShopFromPayload(payload, src)
         purchasePrice,
         sellPrice,
         metadataJson,
+        pedModel,
+        pedScenario,
+        zoneLength,
+        zoneWidth,
+        zoneMinZ,
+        zoneMaxZ,
     })
 
     if not insertId then
         Utils.Notify(src, 'Shop konnte nicht erstellt werden.', 'error')
         return nil, 'db_error'
     end
+
+    PersistCreatorData(insertId, metadata.creator)
 
     return WSShops.DB.Refresh(identifier)
 end
@@ -1447,6 +1572,14 @@ RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
         seededInventory = true
     end
 
+    local pedModel = creator.ped and Trim(creator.ped.model)
+    local pedScenario = creator.ped and Trim(creator.ped.scenario)
+    local zone = creator.zone or {}
+    local zoneLength = tonumber(zone.length) or 2.0
+    local zoneWidth = tonumber(zone.width) or 2.0
+    local zoneMinZ = tonumber(zone.minZ) or (z - 1.0)
+    local zoneMaxZ = tonumber(zone.maxZ) or (z + 1.0)
+
     local metadataJson, metadataErr = EncodeForJson(shop.metadata)
     if not metadataJson then
         Utils.Debug('Failed to encode metadata for shop %s: %s', shop.identifier or '?', metadataErr or 'unknown')
@@ -1454,7 +1587,9 @@ RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
         return
     end
 
-    MySQL.update.await('UPDATE ws_shops SET label = ?, type = ?, coords = ?, heading = ?, purchase_price = ?, sell_price = ?, metadata = ?, updated_at = NOW() WHERE id = ?', {
+    PersistCreatorData(shop.id, creator)
+
+    MySQL.update.await('UPDATE ws_shops SET label = ?, type = ?, coords = ?, heading = ?, purchase_price = ?, sell_price = ?, metadata = ?, ped_model = ?, ped_scenario = ?, zone_length = ?, zone_width = ?, zone_min_z = ?, zone_max_z = ?, updated_at = NOW() WHERE id = ?', {
         shop.label,
         shop.type,
         EncodeCoords({ x = x, y = y, z = z, w = heading }),
@@ -1462,6 +1597,12 @@ RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
         shop.purchasePrice or purchasePrice,
         shop.sellPrice or sellPrice,
         metadataJson,
+        pedModel,
+        pedScenario,
+        zoneLength,
+        zoneWidth,
+        zoneMinZ,
+        zoneMaxZ,
         shop.id,
     })
 

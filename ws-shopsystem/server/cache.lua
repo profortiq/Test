@@ -82,7 +82,16 @@ local function EnsureShopExists(identifier, shopConfig)
     end
     sellPrice = sellPrice or 0
 
-    local insertId = MySQL.insert.await('INSERT INTO ws_shops (identifier, label, type, coords, heading, purchase_price, sell_price, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', {
+    local pedModel = shopConfig.ped and shopConfig.ped.model or nil
+    local pedScenario = shopConfig.ped and shopConfig.ped.scenario or nil
+    local zone = shopConfig.zone or {}
+    local zoneLength = tonumber(zone.length) or 2.0
+    local zoneWidth = tonumber(zone.width) or 2.0
+    local baseZ = (shopConfig.coords and shopConfig.coords.z) or 0.0
+    local zoneMinZ = tonumber(zone.minZ) or (baseZ - 1.0)
+    local zoneMaxZ = tonumber(zone.maxZ) or (baseZ + 1.0)
+
+    local insertId = MySQL.insert.await('INSERT INTO ws_shops (identifier, label, type, coords, heading, purchase_price, sell_price, metadata, ped_model, ped_scenario, zone_length, zone_width, zone_min_z, zone_max_z) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', {
         identifier,
         shopConfig.label,
         shopType,
@@ -94,7 +103,13 @@ local function EnsureShopExists(identifier, shopConfig)
             ped = shopConfig.ped,
             zone = shopConfig.zone,
             blip = shopConfig.blip,
-        })
+        }),
+        pedModel,
+        pedScenario,
+        zoneLength,
+        zoneWidth,
+        zoneMinZ,
+        zoneMaxZ,
     })
 
     Utils.Debug('Inserted new shop %s (%s) with id %s', identifier, shopConfig.label, insertId)
@@ -215,6 +230,95 @@ local function BuildShop(row)
     end
 
     metadata.creator = creator
+
+    if row.ped_model and row.ped_model ~= '' then
+        creator.ped = creator.ped or {}
+        creator.ped.model = row.ped_model
+        creator.ped.scenario = row.ped_scenario
+    end
+
+    if row.zone_length and row.zone_length > 0 then
+        creator.zone = creator.zone or {}
+        creator.zone.length = row.zone_length
+        creator.zone.width = row.zone_width or creator.zone.width or 2.0
+        creator.zone.minZ = row.zone_min_z or creator.zone.minZ or 0.0
+        creator.zone.maxZ = row.zone_max_z or creator.zone.maxZ or 0.0
+    end
+
+    local dropoffRows = MySQL.query.await('SELECT label, x, y, z FROM ws_shop_dropoffs WHERE shop_id = ? ORDER BY sort_index ASC, id ASC', { row.id }) or {}
+    if #dropoffRows > 0 then
+        creator.dropoffs = {}
+        for _, entry in ipairs(dropoffRows) do
+            creator.dropoffs[#creator.dropoffs + 1] = {
+                x = tonumber(entry.x) or 0.0,
+                y = tonumber(entry.y) or 0.0,
+                z = tonumber(entry.z) or 0.0,
+                label = entry.label,
+            }
+        end
+    end
+
+    local depotRows = MySQL.query.await('SELECT label, x, y, z, heading FROM ws_shop_depots WHERE shop_id = ? ORDER BY sort_index ASC, id ASC', { row.id }) or {}
+    if #depotRows > 0 then
+        creator.depots = {}
+        for _, entry in ipairs(depotRows) do
+            creator.depots[#creator.depots + 1] = {
+                x = tonumber(entry.x) or 0.0,
+                y = tonumber(entry.y) or 0.0,
+                z = tonumber(entry.z) or 0.0,
+                heading = tonumber(entry.heading) or 0.0,
+                label = entry.label,
+            }
+        end
+    end
+
+    local spawnRows = MySQL.query.await('SELECT label, x, y, z, heading FROM ws_shop_vehicle_spawns WHERE shop_id = ? ORDER BY sort_index ASC, id ASC', { row.id }) or {}
+    if #spawnRows > 0 then
+        creator.vehicleSpawns = {}
+        for _, entry in ipairs(spawnRows) do
+            creator.vehicleSpawns[#creator.vehicleSpawns + 1] = {
+                x = tonumber(entry.x) or 0.0,
+                y = tonumber(entry.y) or 0.0,
+                z = tonumber(entry.z) or 0.0,
+                heading = tonumber(entry.heading) or 0.0,
+                label = entry.label,
+            }
+        end
+    end
+
+    local vehicleRows = MySQL.query.await('SELECT vehicle_key FROM ws_shop_allowed_vehicles WHERE shop_id = ? ORDER BY sort_index ASC, id ASC', { row.id }) or {}
+    if #vehicleRows > 0 then
+        creator.vehicles = {}
+        for _, entry in ipairs(vehicleRows) do
+            creator.vehicles[#creator.vehicles + 1] = entry.vehicle_key
+        end
+    end
+
+    local categoryRows = MySQL.query.await('SELECT category FROM ws_shop_product_categories WHERE shop_id = ? ORDER BY sort_index ASC, id ASC', { row.id }) or {}
+    if #categoryRows > 0 then
+        creator.products = {}
+        for _, entry in ipairs(categoryRows) do
+            creator.products[#creator.products + 1] = entry.category
+        end
+    end
+
+    local routeRows = MySQL.query.await('SELECT id, label FROM ws_shop_routes WHERE shop_id = ? ORDER BY sort_index ASC, id ASC', { row.id }) or {}
+    if #routeRows > 0 then
+        creator.routes = {}
+        for _, route in ipairs(routeRows) do
+            local points = MySQL.query.await('SELECT label, x, y, z FROM ws_shop_route_points WHERE route_id = ? ORDER BY sort_index ASC, id ASC', { route.id }) or {}
+            local mapped = { label = route.label, points = {} }
+            for _, point in ipairs(points) do
+                mapped.points[#mapped.points + 1] = {
+                    x = tonumber(point.x) or 0.0,
+                    y = tonumber(point.y) or 0.0,
+                    z = tonumber(point.z) or 0.0,
+                    label = point.label,
+                }
+            end
+            creator.routes[#creator.routes + 1] = mapped
+        end
+    end
 
     if creator.ped then
         configShop.ped = creator.ped
