@@ -38,15 +38,496 @@ local function ResetShopOwner(shop)
     })
 end
 
+local SanitizeForClient -- forward declaration
+
+local function EncodeForJson(value)
+    if value == nil then return nil end
+    local sanitized = value
+    if SanitizeForClient then
+        sanitized = SanitizeForClient(value)
+    end
+    local ok, encoded = pcall(json.encode, sanitized)
+    if not ok then
+        return nil, encoded
+    end
+    return encoded, nil
+end
+
+WSShops.EncodeForJson = EncodeForJson
+
 local function SaveMetadata(shop)
     if not shop.metadata then return end
+    local encoded, err = EncodeForJson(shop.metadata)
+    if not encoded then
+        Utils.Debug('Failed to encode metadata for shop %s: %s', shop.identifier or '?', err or 'unknown')
+        return
+    end
     MySQL.update.await('UPDATE ws_shops SET metadata = ?, updated_at = NOW() WHERE id = ?', {
-        json.encode(shop.metadata),
+        encoded,
         shop.id,
     })
 end
 
-local function SanitizeForClient(value)
+local function EncodeCoords(value)
+    if type(value) == 'table' and value.x then
+        return json.encode(value)
+    end
+    if type(value) == 'vector3' or type(value) == 'vector4' then
+        return json.encode({ x = value.x, y = value.y, z = value.z, w = value.w })
+    end
+    return value
+end
+
+local function Trim(value)
+    if not value then return nil end
+    local trimmed = tostring(value):match('^%s*(.-)%s*$')
+    if trimmed == '' then return nil end
+    return trimmed
+end
+
+local function NormalizeIdentifier(value)
+    local trimmed = Trim(value)
+    if not trimmed then return nil end
+    trimmed = trimmed:lower():gsub('%s+', '_')
+    trimmed = trimmed:gsub('[^%w_]', '')
+    trimmed = trimmed:gsub('_+', '_')
+    trimmed = trimmed:gsub('^_', ''):gsub('_$', '')
+    if trimmed == '' then return nil end
+    return trimmed
+end
+
+local function SanitizePointList(list, includeHeading)
+    local result = {}
+    if type(list) ~= 'table' then return result end
+    for _, entry in ipairs(list) do
+        local px = tonumber(entry.x)
+        local py = tonumber(entry.y)
+        local pz = tonumber(entry.z)
+        if px and py and pz then
+            local point = { x = px, y = py, z = pz }
+            local label = Trim(entry.label)
+            if label then
+                point.label = label
+            end
+            if includeHeading then
+                point.heading = tonumber(entry.heading) or 0.0
+            end
+            result[#result + 1] = point
+        end
+    end
+    return result
+end
+
+local function SanitizeRoutes(routes)
+    local result = {}
+    if type(routes) ~= 'table' then return result end
+    for _, entry in ipairs(routes) do
+        local points = {}
+        if type(entry.points) == 'table' then
+            for _, point in ipairs(entry.points) do
+                local px = tonumber(point.x)
+                local py = tonumber(point.y)
+                local pz = tonumber(point.z)
+                if px and py and pz then
+                    local routePoint = { x = px, y = py, z = pz }
+                    local label = Trim(point.label)
+                    if label then
+                        routePoint.label = label
+                    end
+                    points[#points + 1] = routePoint
+                end
+            end
+        end
+        if #points > 0 then
+            local label = Trim(entry.label)
+            result[#result + 1] = {
+                label = label,
+                points = points,
+            }
+        end
+    end
+    return result
+end
+
+local function PersistDropoffs(shopId, dropoffs)
+    MySQL.update.await('DELETE FROM ws_shop_dropoffs WHERE shop_id = ?', { shopId })
+    for index, point in ipairs(dropoffs or {}) do
+        MySQL.insert.await('INSERT INTO ws_shop_dropoffs (shop_id, sort_index, label, x, y, z) VALUES (?, ?, ?, ?, ?, ?)', {
+            shopId,
+            index,
+            Trim(point.label),
+            tonumber(point.x) or 0.0,
+            tonumber(point.y) or 0.0,
+            tonumber(point.z) or 0.0,
+        })
+    end
+end
+
+local function PersistDepots(shopId, depots)
+    MySQL.update.await('DELETE FROM ws_shop_depots WHERE shop_id = ?', { shopId })
+    for index, point in ipairs(depots or {}) do
+        MySQL.insert.await('INSERT INTO ws_shop_depots (shop_id, sort_index, label, x, y, z, heading) VALUES (?, ?, ?, ?, ?, ?, ?)', {
+            shopId,
+            index,
+            Trim(point.label),
+            tonumber(point.x) or 0.0,
+            tonumber(point.y) or 0.0,
+            tonumber(point.z) or 0.0,
+            tonumber(point.heading) or 0.0,
+        })
+    end
+end
+
+local function PersistVehicleSpawns(shopId, spawns)
+    MySQL.update.await('DELETE FROM ws_shop_vehicle_spawns WHERE shop_id = ?', { shopId })
+    for index, point in ipairs(spawns or {}) do
+        MySQL.insert.await('INSERT INTO ws_shop_vehicle_spawns (shop_id, sort_index, label, x, y, z, heading) VALUES (?, ?, ?, ?, ?, ?, ?)', {
+            shopId,
+            index,
+            Trim(point.label),
+            tonumber(point.x) or 0.0,
+            tonumber(point.y) or 0.0,
+            tonumber(point.z) or 0.0,
+            tonumber(point.heading) or 0.0,
+        })
+    end
+end
+
+local function PersistRoutes(shopId, routes)
+    local existing = MySQL.query.await('SELECT id FROM ws_shop_routes WHERE shop_id = ?', { shopId }) or {}
+    for _, row in ipairs(existing) do
+        MySQL.update.await('DELETE FROM ws_shop_route_points WHERE route_id = ?', { row.id })
+    end
+    MySQL.update.await('DELETE FROM ws_shop_routes WHERE shop_id = ?', { shopId })
+
+    for index, route in ipairs(routes or {}) do
+        local routeId = MySQL.insert.await('INSERT INTO ws_shop_routes (shop_id, sort_index, label) VALUES (?, ?, ?)', {
+            shopId,
+            index,
+            Trim(route.label),
+        })
+        if routeId then
+            for pointIndex, point in ipairs(route.points or {}) do
+                MySQL.insert.await('INSERT INTO ws_shop_route_points (route_id, sort_index, label, x, y, z) VALUES (?, ?, ?, ?, ?, ?)', {
+                    routeId,
+                    pointIndex,
+                    Trim(point.label),
+                    tonumber(point.x) or 0.0,
+                    tonumber(point.y) or 0.0,
+                    tonumber(point.z) or 0.0,
+                })
+            end
+        end
+    end
+end
+
+local function PersistAllowedVehicles(shopId, vehicles)
+    MySQL.update.await('DELETE FROM ws_shop_allowed_vehicles WHERE shop_id = ?', { shopId })
+    for index, vehicleKey in ipairs(vehicles or {}) do
+        if type(vehicleKey) == 'string' and Config.DeliveryVehicles[vehicleKey] then
+            MySQL.insert.await('INSERT INTO ws_shop_allowed_vehicles (shop_id, sort_index, vehicle_key) VALUES (?, ?, ?)', {
+                shopId,
+                index,
+                vehicleKey,
+            })
+        end
+    end
+end
+
+local function PersistProductCategories(shopId, categories)
+    MySQL.update.await('DELETE FROM ws_shop_product_categories WHERE shop_id = ?', { shopId })
+    for index, category in ipairs(categories or {}) do
+        local trimmed = Trim(category)
+        if trimmed then
+            MySQL.insert.await('INSERT INTO ws_shop_product_categories (shop_id, sort_index, category) VALUES (?, ?, ?)', {
+                shopId,
+                index,
+                trimmed,
+            })
+        end
+    end
+end
+
+local function PersistCreatorData(shopId, creator)
+    if not shopId or not creator then return end
+    PersistDropoffs(shopId, creator.dropoffs)
+    PersistDepots(shopId, creator.depots)
+    PersistVehicleSpawns(shopId, creator.vehicleSpawns)
+    PersistRoutes(shopId, creator.routes)
+    PersistAllowedVehicles(shopId, creator.vehicles)
+    PersistProductCategories(shopId, creator.products)
+end
+
+local function SyncInventoryRecords(shop, payloadInventory)
+    if not shop or type(payloadInventory) ~= 'table' then return end
+    local existingRows = MySQL.query.await('SELECT id FROM ws_shop_inventory WHERE shop_id = ?', { shop.id }) or {}
+    local existingSet = {}
+    for _, row in ipairs(existingRows) do
+        existingSet[row.id] = true
+    end
+
+    local kept = {}
+    for _, entry in ipairs(payloadInventory) do
+        local itemName = Trim(entry.item)
+        local label = Trim(entry.label)
+        local category = Trim(entry.category)
+        if itemName and label and category then
+            local quantity = math.max(0, math.floor(tonumber(entry.quantity) or 0))
+            local basePrice = math.max(0, math.floor(tonumber(entry.basePrice) or 0))
+            local overridePrice = tonumber(entry.overridePrice)
+            if overridePrice then
+                overridePrice = math.max(0, math.floor(overridePrice))
+            else
+                overridePrice = basePrice
+            end
+            local minLevel = math.max(1, math.floor(tonumber(entry.minLevel) or 1))
+            local discount = math.max(0, math.floor(tonumber(entry.discount) or 0))
+            local icon = Trim(entry.icon)
+            local id = tonumber(entry.id)
+
+            if id and existingSet[id] then
+                MySQL.update.await('UPDATE ws_shop_inventory SET item = ?, label = ?, icon = ?, category = ?, quantity = ?, base_price = ?, override_price = ?, min_level = ?, discount = ?, updated_at = NOW() WHERE id = ? AND shop_id = ?', {
+                    itemName,
+                    label,
+                    icon,
+                    category,
+                    quantity,
+                    basePrice,
+                    overridePrice,
+                    minLevel,
+                    discount,
+                    id,
+                    shop.id,
+                })
+                kept[id] = true
+            else
+                local newId = MySQL.insert.await('INSERT INTO ws_shop_inventory (shop_id, item, label, icon, category, quantity, base_price, override_price, min_level, discount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', {
+                    shop.id,
+                    itemName,
+                    label,
+                    icon,
+                    category,
+                    quantity,
+                    basePrice,
+                    overridePrice,
+                    minLevel,
+                    discount,
+                })
+                if newId then
+                    kept[newId] = true
+                end
+            end
+        end
+    end
+
+    for id in pairs(existingSet) do
+        if not kept[id] then
+            MySQL.update.await('DELETE FROM ws_shop_inventory WHERE id = ? AND shop_id = ?', { id, shop.id })
+        end
+    end
+end
+
+local function CreateShopFromPayload(payload, src)
+    local identifier = NormalizeIdentifier(payload.identifier)
+    if not identifier then
+        Utils.Notify(src, 'Ungültige Shop-ID.', 'error')
+        return nil, 'invalid_identifier'
+    end
+
+    if GetShop(identifier) or MySQL.single.await('SELECT id FROM ws_shops WHERE identifier = ?', { identifier }) then
+        Utils.Notify(src, 'Ein Shop mit dieser ID existiert bereits.', 'error')
+        return nil, 'duplicate'
+    end
+
+    local typeKey = payload.type
+    if not typeKey or not Config.ShopTypes[typeKey] then
+        Utils.Notify(src, 'Ungültiger Shop-Typ.', 'error')
+        return nil, 'invalid_type'
+    end
+
+    local label = Trim(payload.label) or identifier
+
+    local coordsPayload = payload.coords or {}
+    local x = tonumber(coordsPayload.x) or 0.0
+    local y = tonumber(coordsPayload.y) or 0.0
+    local z = tonumber(coordsPayload.z) or 0.0
+    local heading = tonumber(coordsPayload.heading or coordsPayload.w) or 0.0
+
+    local purchasePrice = tonumber(payload.purchasePrice) or (Config.ShopTypes[typeKey] and Config.ShopTypes[typeKey].purchasePrice) or 0
+    if purchasePrice < 0 then purchasePrice = 0 end
+    local sellPrice = tonumber(payload.sellPrice) or (Config.ShopTypes[typeKey] and Config.ShopTypes[typeKey].sellPrice) or 0
+    if sellPrice < 0 then sellPrice = 0 end
+
+    local metadata = {
+        creator = {
+            coords = { x = x, y = y, z = z, w = heading },
+            heading = heading,
+            ped = type(payload.ped) == 'table' and {
+                model = Trim(payload.ped.model),
+                scenario = Trim(payload.ped.scenario),
+            } or nil,
+            zone = type(payload.zone) == 'table' and {
+                length = tonumber(payload.zone.length) or 2.0,
+                width = tonumber(payload.zone.width) or 2.0,
+                minZ = tonumber(payload.zone.minZ) or (z - 1.0),
+                maxZ = tonumber(payload.zone.maxZ) or (z + 1.0),
+            } or nil,
+            dropoffs = SanitizePointList(payload.dropoffs, false),
+            depots = SanitizePointList(payload.depots, true),
+            vehicles = {},
+            products = {},
+            vehicleSpawns = SanitizePointList(payload.vehicleSpawns, true),
+            routes = SanitizeRoutes(payload.routes),
+            purchasePrice = purchasePrice,
+            sellPrice = sellPrice,
+        },
+    }
+
+    if type(payload.vehicles) == 'table' then
+        local seen = {}
+        for _, key in ipairs(payload.vehicles) do
+            if type(key) == 'string' and Config.DeliveryVehicles[key] and not seen[key] then
+                metadata.creator.vehicles[#metadata.creator.vehicles + 1] = key
+                seen[key] = true
+            end
+        end
+    end
+
+    if type(payload.products) == 'table' then
+        local seen = {}
+        for _, category in ipairs(payload.products) do
+            if type(category) == 'string' then
+                local trimmed = Trim(category)
+                if trimmed and not seen[trimmed] then
+                    metadata.creator.products[#metadata.creator.products + 1] = trimmed
+                    seen[trimmed] = true
+                end
+            end
+        end
+    end
+
+    local pedModel = metadata.creator.ped and Trim(metadata.creator.ped.model)
+    local pedScenario = metadata.creator.ped and Trim(metadata.creator.ped.scenario)
+    local zone = metadata.creator.zone or {}
+    local zoneLength = tonumber(zone.length) or 2.0
+    local zoneWidth = tonumber(zone.width) or 2.0
+    local zoneMinZ = tonumber(zone.minZ) or (z - 1.0)
+    local zoneMaxZ = tonumber(zone.maxZ) or (z + 1.0)
+
+    local metadataJson, metadataErr = EncodeForJson(metadata)
+    if not metadataJson then
+        Utils.Debug('Failed to encode metadata for new shop %s: %s', identifier, metadataErr or 'unknown')
+        Utils.Notify(src, 'Shop konnte nicht erstellt werden (Metadatenfehler).', 'error')
+        return nil, 'metadata_encode_error'
+    end
+
+    local insertId = MySQL.insert.await('INSERT INTO ws_shops (identifier, label, type, coords, heading, purchase_price, sell_price, metadata, ped_model, ped_scenario, zone_length, zone_width, zone_min_z, zone_max_z) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', {
+        identifier,
+        label,
+        typeKey,
+        EncodeCoords({ x = x, y = y, z = z, w = heading }),
+        heading,
+        purchasePrice,
+        sellPrice,
+        metadataJson,
+        pedModel,
+        pedScenario,
+        zoneLength,
+        zoneWidth,
+        zoneMinZ,
+        zoneMaxZ,
+    })
+
+    if not insertId then
+        Utils.Notify(src, 'Shop konnte nicht erstellt werden.', 'error')
+        return nil, 'db_error'
+    end
+
+    PersistCreatorData(insertId, metadata.creator)
+
+    return WSShops.DB.Refresh(identifier)
+end
+
+local function PlayerIsAdmin(src)
+    return QBCore.Functions.HasPermission(src, 'god') or QBCore.Functions.HasPermission(src, 'admin')
+end
+
+local function BuildShopCachePayload()
+    local payload = {}
+    for identifier, shop in pairs(WSShops.Cache and WSShops.Cache.ShopsByIdentifier or {}) do
+        payload[#payload + 1] = {
+            identifier = identifier,
+            label = shop.label,
+            coords = SanitizeForClient(shop.coords),
+            heading = shop.heading,
+            type = shop.type,
+            owner = shop.owner,
+            level = shop.level,
+            config = SanitizeForClient(shop.config or {}),
+            metadata = SanitizeForClient(shop.metadata or {}),
+        }
+    end
+    table.sort(payload, function(a, b)
+        local aLabel = a.label or a.identifier
+        local bLabel = b.label or b.identifier
+        return aLabel < bLabel
+    end)
+    return payload
+end
+
+local function BroadcastShopCache(target)
+    local payload = BuildShopCachePayload()
+    TriggerClientEvent('ws-shopsystem:client:receiveShopCache', target or -1, payload)
+end
+
+WSShops.BuildShopCachePayload = BuildShopCachePayload
+WSShops.BroadcastShopCache = BroadcastShopCache
+
+local function SeedInventoryForCategories(shop, categories)
+    if type(categories) ~= 'table' then return end
+    local normalized = {}
+    local seen = {}
+    for _, value in pairs(categories) do
+        if type(value) == 'string' then
+            local key = value
+            if not seen[key] then
+                normalized[#normalized + 1] = key
+                seen[key] = true
+            end
+        end
+    end
+    if #normalized == 0 then return end
+
+    local typeConfig = Config.ShopTypes[shop.type] or {}
+    if not typeConfig.baseProducts then return end
+
+    MySQL.update.await('DELETE FROM ws_shop_inventory WHERE shop_id = ?', { shop.id })
+    for _, category in ipairs(normalized) do
+        local categoryConfig = typeConfig.baseProducts[category]
+        if categoryConfig then
+            for _, item in ipairs(categoryConfig.items or {}) do
+                MySQL.insert.await([[INSERT INTO ws_shop_inventory
+                    (shop_id, item, label, icon, category, quantity, base_price, override_price, min_level, discount)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ]], {
+                    shop.id,
+                    item.item,
+                    item.label,
+                    item.icon,
+                    category,
+                    item.restock or Config.DefaultRestockQuantity or 50,
+                    item.price or 0,
+                    item.price or 0,
+                    item.minLevel or 1,
+                    0,
+                })
+            end
+        end
+    end
+    WSShops.FetchInventory(shop)
+end
+
+SanitizeForClient = function(value)
     local t = type(value)
     if t == 'vector3' then
         return { x = value.x, y = value.y, z = value.z }
@@ -90,6 +571,23 @@ end
 
 local function PrepareShopPayload(shop, options)
     options = options or {}
+
+    local allowedVehicles = nil
+    if shop.metadata and shop.metadata.creator and shop.metadata.creator.vehicles then
+        allowedVehicles = shop.metadata.creator.vehicles
+    end
+
+    local deliveryVehicles = {}
+    if allowedVehicles and type(allowedVehicles) == 'table' and next(allowedVehicles) then
+        for _, key in ipairs(allowedVehicles) do
+            if Config.DeliveryVehicles[key] then
+                deliveryVehicles[key] = SanitizeForClient(Config.DeliveryVehicles[key])
+            end
+        end
+    else
+        deliveryVehicles = SanitizeForClient(Config.DeliveryVehicles)
+    end
+
     local data = {
         id = shop.id,
         identifier = shop.identifier,
@@ -110,16 +608,53 @@ local function PrepareShopPayload(shop, options)
         inventory = SanitizeForClient(shop.inventory or {}),
         employees = SanitizeForClient(shop.employees or {}),
         deliveries = SanitizeForClient(shop.deliveries or {}),
-        deliveryVehicles = SanitizeForClient(Config.DeliveryVehicles),
+        deliveryVehicles = deliveryVehicles,
         roles = SanitizeForClient(Config.Roles),
         levels = SanitizeForClient(Config.Levels),
         vehicleOwnership = SanitizeForClient((shop.metadata and shop.metadata.vehicleUnlocks) or {}),
+        metadata = SanitizeForClient(shop.metadata or {}),
     }
+    data.deliveryCapacityBonus = Config.DeliveryCapacityBonusPerLevel or 0
+
     if options.includeStats then
         data.stats = FetchDashboardStats(shop)
     end
     return data
 end
+
+local function BuildAdminPayload()
+    local shops = {}
+    for identifier, shop in pairs(WSShops.Cache and WSShops.Cache.ShopsByIdentifier or {}) do
+        shops[#shops + 1] = {
+            identifier = identifier,
+            label = shop.label,
+            type = shop.type,
+            owner = shop.ownerName or shop.owner,
+            level = shop.level,
+            balance = shop.balance,
+            coords = SanitizeForClient(shop.coords),
+            heading = shop.heading,
+            purchasePrice = shop.purchasePrice,
+            sellPrice = shop.sellPrice,
+            metadata = SanitizeForClient(shop.metadata or {}),
+            config = SanitizeForClient(shop.config or {}),
+            typeConfig = SanitizeForClient(shop.typeConfig or {}),
+            inventory = SanitizeForClient(shop.inventory or {}),
+        }
+    end
+    table.sort(shops, function(a, b)
+        return (a.label or a.identifier) < (b.label or b.identifier)
+    end)
+
+    return {
+        shops = shops,
+        shopTypes = SanitizeForClient(Config.ShopTypes),
+        deliveryVehicles = SanitizeForClient(Config.DeliveryVehicles),
+        depots = SanitizeForClient(Config.Depots),
+    }
+end
+
+WSShops.BuildAdminPayload = BuildAdminPayload
 
 local function EnsureVehicleUnlocks(shop)
     shop.metadata = shop.metadata or {}
@@ -180,13 +715,23 @@ function WSShops.UpdateBalance(shop, amount, reason, metadata)
         shop.id,
     })
 
+    local financePayload
+    if metadata then
+        local encoded, encodeErr = EncodeForJson(metadata)
+        if not encoded then
+            Utils.Debug('Failed to encode finance metadata for shop %s: %s', shop.identifier or '?', encodeErr or 'unknown')
+        else
+            financePayload = encoded
+        end
+    end
+
     MySQL.insert.await('INSERT INTO ws_shop_finance_log (shop_id, type, amount, balance_after, description, payload) VALUES (?, ?, ?, ?, ?, ?)', {
         shop.id,
         reason or 'unknown',
         amount,
         shop.balance,
         reason,
-        metadata and json.encode(metadata) or nil,
+        financePayload,
     })
 end
 
@@ -252,6 +797,16 @@ function WSShops.NotifyOwner(shop, subject, message)
     if not shop.owner then return end
     if not Config.PhoneResource or Config.PhoneResource == '' then return end
     TriggerEvent(Config.PhoneResource .. ':server:sendNewMail', shop.owner, {
+        sender = Config.Notifications.phone.sender,
+        subject = subject,
+        message = message,
+    })
+end
+
+function WSShops.NotifyCitizen(citizenid, subject, message)
+    if not citizenid then return end
+    if not Config.PhoneResource or Config.PhoneResource == '' then return end
+    TriggerEvent(Config.PhoneResource .. ':server:sendNewMail', citizenid, {
         sender = Config.Notifications.phone.sender,
         subject = subject,
         message = message,
@@ -760,6 +1315,317 @@ RegisterNetEvent('ws-shopsystem:server:openManagement', function(identifier)
         canManage = true,
         citizenid = Player.PlayerData.citizenid,
     })
+end)
+
+RegisterNetEvent('ws-shopsystem:server:createDelivery', function(identifier, payload)
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return end
+
+    local shop = EnsureShopExists(identifier, src)
+    if not shop then return end
+
+    if not WSShops.PlayerHasRole(Player, shop, Config.DeliveryAccessRoles or {}) then
+        Utils.Notify(src, Utils.Locale('error.role_not_allowed'), 'error')
+        return
+    end
+
+    if not WSShops.Deliveries or not WSShops.Deliveries.Create then
+        Utils.Notify(src, Utils.Locale('error.delivery_failed'), 'error')
+        return
+    end
+
+    local deliveryId, err = WSShops.Deliveries.Create(shop, Player.PlayerData.citizenid, payload or {})
+    if not deliveryId then
+        if err == 'capacity' then
+            Utils.Notify(src, Utils.Locale('error.delivery_capacity'), 'error')
+        elseif err == 'vehicle' then
+            Utils.Notify(src, Utils.Locale('error.delivery_vehicle_locked'), 'error')
+        else
+            Utils.Notify(src, Utils.Locale('error.delivery_failed'), 'error')
+        end
+        return
+    end
+
+    Utils.Notify(src, Utils.Locale('info.new_delivery'), 'success')
+end)
+
+RegisterNetEvent('ws-shopsystem:server:startDelivery', function(identifier, deliveryIdentifier, vehicleKey, plate)
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return end
+
+    local shop = EnsureShopExists(identifier, src)
+    if not shop then return end
+
+    if not WSShops.PlayerHasRole(Player, shop, Config.DeliveryAccessRoles or {}) then
+        Utils.Notify(src, Utils.Locale('error.role_not_allowed'), 'error')
+        return
+    end
+
+    if not WSShops.Deliveries or not WSShops.Deliveries.Start then
+        Utils.Notify(src, Utils.Locale('error.delivery_failed'), 'error')
+        return
+    end
+
+    local success, reason = WSShops.Deliveries.Start(shop, Player, deliveryIdentifier, vehicleKey, plate)
+    if not success then
+        if reason == 'not_found' then
+            Utils.Notify(src, Utils.Locale('error.shop_not_found'), 'error')
+        elseif reason == 'vehicle' then
+            Utils.Notify(src, Utils.Locale('error.delivery_vehicle_locked'), 'error')
+        else
+            Utils.Notify(src, Utils.Locale('error.delivery_failed'), 'error')
+        end
+        return
+    end
+
+    Utils.Notify(src, Utils.Locale('success.delivery_started'), 'success')
+end)
+
+RegisterNetEvent('ws-shopsystem:server:completeDelivery', function(identifier, deliveryIdentifier, duration, fuelCost)
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return end
+
+    local shop = EnsureShopExists(identifier, src)
+    if not shop then return end
+
+    if not WSShops.Deliveries or not WSShops.Deliveries.Complete then
+        Utils.Notify(src, Utils.Locale('error.delivery_failed'), 'error')
+        return
+    end
+
+    local success, reason = WSShops.Deliveries.Complete(shop, Player, deliveryIdentifier, duration, fuelCost)
+    if not success then
+        if reason == 'forbidden' then
+            Utils.Notify(src, Utils.Locale('error.role_not_allowed'), 'error')
+        else
+            Utils.Notify(src, Utils.Locale('error.delivery_failed'), 'error')
+        end
+        return
+    end
+
+    Utils.Notify(src, Utils.Locale('success.delivery_finished'), 'success')
+end)
+
+RegisterNetEvent('ws-shopsystem:server:failDelivery', function(identifier, deliveryIdentifier, reason)
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return end
+
+    local shop = EnsureShopExists(identifier, src)
+    if not shop then return end
+
+    if not WSShops.Deliveries or not WSShops.Deliveries.Fail then
+        Utils.Notify(src, Utils.Locale('error.delivery_failed'), 'error')
+        return
+    end
+
+    local success, err = WSShops.Deliveries.Fail(shop, Player, deliveryIdentifier, reason)
+    if not success then
+        if err == 'forbidden' then
+            Utils.Notify(src, Utils.Locale('error.role_not_allowed'), 'error')
+        else
+            Utils.Notify(src, Utils.Locale('error.delivery_failed'), 'error')
+        end
+        return
+    end
+
+    Utils.Notify(src, Utils.Locale('error.delivery_failed'), 'error')
+end)
+
+RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
+    local src = source
+    if not PlayerIsAdmin(src) then return end
+    if type(payload) ~= 'table' then return end
+
+    local identifier = payload.identifier
+    if not identifier and payload.isNew then
+        identifier = NormalizeIdentifier(payload.proposedIdentifier or payload.label)
+    end
+    if not identifier then
+        Utils.Notify(src, 'Keine gültige Shop-ID angegeben.', 'error')
+        return
+    end
+
+    payload.identifier = identifier
+
+    local shop = GetShop(identifier)
+    if not shop then
+        if payload.isNew then
+            local created = CreateShopFromPayload(payload, src)
+            if not created then return end
+            shop = created
+        else
+            Utils.Notify(src, 'Shop wurde nicht gefunden.', 'error')
+            return
+        end
+    end
+
+    local newLabel = Trim(payload.label)
+    if newLabel then
+        shop.label = newLabel
+    end
+
+    if payload.type and Config.ShopTypes[payload.type] then
+        shop.type = payload.type
+        shop.typeConfig = Config.ShopTypes[shop.type] or {}
+    end
+
+    local coordsPayload = payload.coords or {}
+    local x = tonumber(coordsPayload.x) or (shop.coords and shop.coords.x) or 0.0
+    local y = tonumber(coordsPayload.y) or (shop.coords and shop.coords.y) or 0.0
+    local z = tonumber(coordsPayload.z) or (shop.coords and shop.coords.z) or 0.0
+    local heading = tonumber(coordsPayload.heading or coordsPayload.w) or shop.heading or 0.0
+
+    shop.coords = vector3(x, y, z)
+    shop.heading = heading
+
+    local purchasePrice = shop.purchasePrice or 0
+    if payload.purchasePrice ~= nil then
+        purchasePrice = math.max(0, math.floor(tonumber(payload.purchasePrice) or 0))
+        shop.purchasePrice = purchasePrice
+    end
+
+    local sellPrice = shop.sellPrice or 0
+    if payload.sellPrice ~= nil then
+        sellPrice = math.max(0, math.floor(tonumber(payload.sellPrice) or 0))
+        shop.sellPrice = sellPrice
+    end
+
+    shop.metadata = shop.metadata or {}
+    shop.metadata.creator = shop.metadata.creator or {}
+    local creator = shop.metadata.creator
+    creator.coords = { x = x, y = y, z = z, w = heading }
+    creator.heading = heading
+
+    if type(payload.ped) == 'table' then
+        local model = Trim(payload.ped.model)
+        local scenario = Trim(payload.ped.scenario)
+        if model then
+            creator.ped = {
+                model = model,
+                scenario = scenario,
+            }
+        else
+            creator.ped = nil
+        end
+    end
+
+    if type(payload.zone) == 'table' then
+        creator.zone = {
+            length = tonumber(payload.zone.length) or 2.0,
+            width = tonumber(payload.zone.width) or 2.0,
+            minZ = tonumber(payload.zone.minZ) or (z - 1.0),
+            maxZ = tonumber(payload.zone.maxZ) or (z + 1.0),
+        }
+    end
+
+    creator.dropoffs = SanitizePointList(payload.dropoffs, false)
+    creator.depots = SanitizePointList(payload.depots, true)
+    creator.vehicleSpawns = SanitizePointList(payload.vehicleSpawns, true)
+    creator.routes = SanitizeRoutes(payload.routes)
+
+    local vehicles = {}
+    local seenVehicles = {}
+    if type(payload.vehicles) == 'table' then
+        for _, key in ipairs(payload.vehicles) do
+            if type(key) == 'string' and Config.DeliveryVehicles[key] and not seenVehicles[key] then
+                vehicles[#vehicles + 1] = key
+                seenVehicles[key] = true
+            end
+        end
+    end
+    creator.vehicles = vehicles
+
+    local categorySet = {}
+    if type(payload.products) == 'table' then
+        creator.products = {}
+        for _, category in ipairs(payload.products) do
+            local trimmed = Trim(category)
+            if trimmed and not categorySet[trimmed] then
+                creator.products[#creator.products + 1] = trimmed
+                categorySet[trimmed] = true
+            end
+        end
+    end
+
+    creator.purchasePrice = shop.purchasePrice or purchasePrice
+    creator.sellPrice = shop.sellPrice or sellPrice
+
+    local seededInventory = false
+    if type(payload.inventory) == 'table' then
+        SyncInventoryRecords(shop, payload.inventory)
+        if (not creator.products or #creator.products == 0) then
+            creator.products = {}
+            for _, entry in ipairs(payload.inventory) do
+                local cat = Trim(entry.category)
+                if cat and not categorySet[cat] then
+                    creator.products[#creator.products + 1] = cat
+                    categorySet[cat] = true
+                end
+            end
+        end
+    elseif creator.products and #creator.products > 0 then
+        SeedInventoryForCategories(shop, creator.products)
+        seededInventory = true
+    end
+
+    local pedModel = creator.ped and Trim(creator.ped.model)
+    local pedScenario = creator.ped and Trim(creator.ped.scenario)
+    local zone = creator.zone or {}
+    local zoneLength = tonumber(zone.length) or 2.0
+    local zoneWidth = tonumber(zone.width) or 2.0
+    local zoneMinZ = tonumber(zone.minZ) or (z - 1.0)
+    local zoneMaxZ = tonumber(zone.maxZ) or (z + 1.0)
+
+    local metadataJson, metadataErr = EncodeForJson(shop.metadata)
+    if not metadataJson then
+        Utils.Debug('Failed to encode metadata for shop %s: %s', shop.identifier or '?', metadataErr or 'unknown')
+        Utils.Notify(src, 'Shop konnte nicht gespeichert werden (Metadatenfehler).', 'error')
+        return
+    end
+
+    PersistCreatorData(shop.id, creator)
+
+    MySQL.update.await('UPDATE ws_shops SET label = ?, type = ?, coords = ?, heading = ?, purchase_price = ?, sell_price = ?, metadata = ?, ped_model = ?, ped_scenario = ?, zone_length = ?, zone_width = ?, zone_min_z = ?, zone_max_z = ?, updated_at = NOW() WHERE id = ?', {
+        shop.label,
+        shop.type,
+        EncodeCoords({ x = x, y = y, z = z, w = heading }),
+        heading,
+        shop.purchasePrice or purchasePrice,
+        shop.sellPrice or sellPrice,
+        metadataJson,
+        pedModel,
+        pedScenario,
+        zoneLength,
+        zoneWidth,
+        zoneMinZ,
+        zoneMaxZ,
+        shop.id,
+    })
+
+    shop = WSShops.DB.Refresh(shop.identifier) or shop
+
+    if type(payload.inventory) == 'table' or seededInventory then
+        WSShops.FetchInventory(shop)
+    end
+
+    BroadcastShopCache()
+
+    TriggerClientEvent('ws-shopsystem:client:inventoryUpdated', -1, shop.identifier)
+
+    TriggerClientEvent('ws-shopsystem:client:shopUpdated', -1, shop.identifier, {
+        label = shop.label,
+        metadata = SanitizeForClient(shop.metadata or {}),
+        config = SanitizeForClient(shop.config or {}),
+        coords = SanitizeForClient(shop.coords),
+        heading = shop.heading,
+    })
+
+    Utils.Notify(src, Utils.Locale('success.shop_saved'), 'success')
+    TriggerClientEvent('ws-shopsystem:client:openAdminOverview', src, BuildAdminPayload())
 end)
 
 QBCore.Functions.CreateCallback('ws-shopsystem:server:getShopData', function(source, cb, identifier)
