@@ -150,112 +150,143 @@ local function SanitizeRoutes(routes)
 end
 
 local function PersistDropoffs(shopId, dropoffs)
-    MySQL.update.await('DELETE FROM ws_shop_dropoffs WHERE shop_id = ?', { shopId })
-    for index, point in ipairs(dropoffs or {}) do
-        MySQL.insert.await('INSERT INTO ws_shop_dropoffs (shop_id, sort_index, label, x, y, z) VALUES (?, ?, ?, ?, ?, ?)', {
-            shopId,
-            index,
-            Trim(point.label),
-            tonumber(point.x) or 0.0,
-            tonumber(point.y) or 0.0,
-            tonumber(point.z) or 0.0,
-        })
-    end
+    local ok, err = pcall(function()
+        MySQL.update.await('DELETE FROM ws_shop_dropoffs WHERE shop_id = ?', { shopId })
+        for index, point in ipairs(dropoffs or {}) do
+            MySQL.insert.await('INSERT INTO ws_shop_dropoffs (shop_id, sort_index, label, x, y, z) VALUES (?, ?, ?, ?, ?, ?)', {
+                shopId,
+                index,
+                Trim(point.label),
+                tonumber(point.x) or 0.0,
+                tonumber(point.y) or 0.0,
+                tonumber(point.z) or 0.0,
+            })
+        end
+    end)
+    if not ok then return false, err end
+    return true
 end
 
 local function PersistDepots(shopId, depots)
-    MySQL.update.await('DELETE FROM ws_shop_depots WHERE shop_id = ?', { shopId })
-    for index, point in ipairs(depots or {}) do
-        MySQL.insert.await('INSERT INTO ws_shop_depots (shop_id, sort_index, label, x, y, z, heading) VALUES (?, ?, ?, ?, ?, ?, ?)', {
-            shopId,
-            index,
-            Trim(point.label),
-            tonumber(point.x) or 0.0,
-            tonumber(point.y) or 0.0,
-            tonumber(point.z) or 0.0,
-            tonumber(point.heading) or 0.0,
-        })
-    end
+    local ok, err = pcall(function()
+        MySQL.update.await('DELETE FROM ws_shop_depots WHERE shop_id = ?', { shopId })
+        for index, point in ipairs(depots or {}) do
+            MySQL.insert.await('INSERT INTO ws_shop_depots (shop_id, sort_index, label, x, y, z, heading) VALUES (?, ?, ?, ?, ?, ?, ?)', {
+                shopId,
+                index,
+                Trim(point.label),
+                tonumber(point.x) or 0.0,
+                tonumber(point.y) or 0.0,
+                tonumber(point.z) or 0.0,
+                tonumber(point.heading) or 0.0,
+            })
+        end
+    end)
+    if not ok then return false, err end
+    return true
 end
 
 local function PersistVehicleSpawns(shopId, spawns)
-    MySQL.update.await('DELETE FROM ws_shop_vehicle_spawns WHERE shop_id = ?', { shopId })
-    for index, point in ipairs(spawns or {}) do
-        MySQL.insert.await('INSERT INTO ws_shop_vehicle_spawns (shop_id, sort_index, label, x, y, z, heading) VALUES (?, ?, ?, ?, ?, ?, ?)', {
-            shopId,
-            index,
-            Trim(point.label),
-            tonumber(point.x) or 0.0,
-            tonumber(point.y) or 0.0,
-            tonumber(point.z) or 0.0,
-            tonumber(point.heading) or 0.0,
-        })
-    end
+    local ok, err = pcall(function()
+        MySQL.update.await('DELETE FROM ws_shop_vehicle_spawns WHERE shop_id = ?', { shopId })
+        for index, point in ipairs(spawns or {}) do
+            MySQL.insert.await('INSERT INTO ws_shop_vehicle_spawns (shop_id, sort_index, label, x, y, z, heading) VALUES (?, ?, ?, ?, ?, ?, ?)', {
+                shopId,
+                index,
+                Trim(point.label),
+                tonumber(point.x) or 0.0,
+                tonumber(point.y) or 0.0,
+                tonumber(point.z) or 0.0,
+                tonumber(point.heading) or 0.0,
+            })
+        end
+    end)
+    if not ok then return false, err end
+    return true
 end
 
 local function PersistRoutes(shopId, routes)
-    local existing = MySQL.query.await('SELECT id FROM ws_shop_routes WHERE shop_id = ?', { shopId }) or {}
-    for _, row in ipairs(existing) do
-        MySQL.update.await('DELETE FROM ws_shop_route_points WHERE route_id = ?', { row.id })
-    end
-    MySQL.update.await('DELETE FROM ws_shop_routes WHERE shop_id = ?', { shopId })
+    local ok, err = pcall(function()
+        local existing = MySQL.query.await('SELECT id FROM ws_shop_routes WHERE shop_id = ?', { shopId }) or {}
+        for _, row in ipairs(existing) do
+            MySQL.update.await('DELETE FROM ws_shop_route_points WHERE route_id = ?', { row.id })
+        end
+        MySQL.update.await('DELETE FROM ws_shop_routes WHERE shop_id = ?', { shopId })
 
-    for index, route in ipairs(routes or {}) do
-        local routeId = MySQL.insert.await('INSERT INTO ws_shop_routes (shop_id, sort_index, label) VALUES (?, ?, ?)', {
-            shopId,
-            index,
-            Trim(route.label),
-        })
-        if routeId then
-            for pointIndex, point in ipairs(route.points or {}) do
-                MySQL.insert.await('INSERT INTO ws_shop_route_points (route_id, sort_index, label, x, y, z) VALUES (?, ?, ?, ?, ?, ?)', {
-                    routeId,
-                    pointIndex,
-                    Trim(point.label),
-                    tonumber(point.x) or 0.0,
-                    tonumber(point.y) or 0.0,
-                    tonumber(point.z) or 0.0,
-                })
+        for index, route in ipairs(routes or {}) do
+            local routeId = MySQL.insert.await('INSERT INTO ws_shop_routes (shop_id, sort_index, label) VALUES (?, ?, ?)', {
+                shopId,
+                index,
+                Trim(route.label),
+            })
+            if routeId then
+                for pointIndex, point in ipairs(route.points or {}) do
+                    MySQL.insert.await('INSERT INTO ws_shop_route_points (route_id, sort_index, label, x, y, z) VALUES (?, ?, ?, ?, ?, ?)', {
+                        routeId,
+                        pointIndex,
+                        Trim(point.label),
+                        tonumber(point.x) or 0.0,
+                        tonumber(point.y) or 0.0,
+                        tonumber(point.z) or 0.0,
+                    })
+                end
             end
         end
-    end
+    end)
+    if not ok then return false, err end
+    return true
 end
 
 local function PersistAllowedVehicles(shopId, vehicles)
-    MySQL.update.await('DELETE FROM ws_shop_allowed_vehicles WHERE shop_id = ?', { shopId })
-    for index, vehicleKey in ipairs(vehicles or {}) do
-        if type(vehicleKey) == 'string' and Config.DeliveryVehicles[vehicleKey] then
-            MySQL.insert.await('INSERT INTO ws_shop_allowed_vehicles (shop_id, sort_index, vehicle_key) VALUES (?, ?, ?)', {
-                shopId,
-                index,
-                vehicleKey,
-            })
+    local ok, err = pcall(function()
+        MySQL.update.await('DELETE FROM ws_shop_allowed_vehicles WHERE shop_id = ?', { shopId })
+        for index, vehicleKey in ipairs(vehicles or {}) do
+            if type(vehicleKey) == 'string' and Config.DeliveryVehicles[vehicleKey] then
+                MySQL.insert.await('INSERT INTO ws_shop_allowed_vehicles (shop_id, sort_index, vehicle_key) VALUES (?, ?, ?)', {
+                    shopId,
+                    index,
+                    vehicleKey,
+                })
+            end
         end
-    end
+    end)
+    if not ok then return false, err end
+    return true
 end
 
 local function PersistProductCategories(shopId, categories)
-    MySQL.update.await('DELETE FROM ws_shop_product_categories WHERE shop_id = ?', { shopId })
-    for index, category in ipairs(categories or {}) do
-        local trimmed = Trim(category)
-        if trimmed then
-            MySQL.insert.await('INSERT INTO ws_shop_product_categories (shop_id, sort_index, category) VALUES (?, ?, ?)', {
-                shopId,
-                index,
-                trimmed,
-            })
+    local ok, err = pcall(function()
+        MySQL.update.await('DELETE FROM ws_shop_product_categories WHERE shop_id = ?', { shopId })
+        for index, category in ipairs(categories or {}) do
+            local trimmed = Trim(category)
+            if trimmed then
+                MySQL.insert.await('INSERT INTO ws_shop_product_categories (shop_id, sort_index, category) VALUES (?, ?, ?)', {
+                    shopId,
+                    index,
+                    trimmed,
+                })
+            end
         end
-    end
+    end)
+    if not ok then return false, err end
+    return true
 end
 
 local function PersistCreatorData(shopId, creator)
-    if not shopId or not creator then return end
-    PersistDropoffs(shopId, creator.dropoffs)
-    PersistDepots(shopId, creator.depots)
-    PersistVehicleSpawns(shopId, creator.vehicleSpawns)
-    PersistRoutes(shopId, creator.routes)
-    PersistAllowedVehicles(shopId, creator.vehicles)
-    PersistProductCategories(shopId, creator.products)
+    if not shopId or not creator then return true end
+    local ok, err = PersistDropoffs(shopId, creator.dropoffs)
+    if not ok then return false, err end
+    ok, err = PersistDepots(shopId, creator.depots)
+    if not ok then return false, err end
+    ok, err = PersistVehicleSpawns(shopId, creator.vehicleSpawns)
+    if not ok then return false, err end
+    ok, err = PersistRoutes(shopId, creator.routes)
+    if not ok then return false, err end
+    ok, err = PersistAllowedVehicles(shopId, creator.vehicles)
+    if not ok then return false, err end
+    ok, err = PersistProductCategories(shopId, creator.products)
+    if not ok then return false, err end
+    return true
 end
 
 local function SyncInventoryRecords(shop, payloadInventory)
@@ -421,29 +452,46 @@ local function CreateShopFromPayload(payload, src)
         return nil, 'metadata_encode_error'
     end
 
-    local insertId = MySQL.insert.await('INSERT INTO ws_shops (identifier, label, type, coords, heading, purchase_price, sell_price, metadata, ped_model, ped_scenario, zone_length, zone_width, zone_min_z, zone_max_z) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', {
-        identifier,
-        label,
-        typeKey,
-        EncodeCoords({ x = x, y = y, z = z, w = heading }),
-        heading,
-        purchasePrice,
-        sellPrice,
-        metadataJson,
-        pedModel,
-        pedScenario,
-        zoneLength,
-        zoneWidth,
-        zoneMinZ,
-        zoneMaxZ,
-    })
+    local insertOk, insertResult = pcall(function()
+        return MySQL.insert.await('INSERT INTO ws_shops (identifier, label, type, coords, heading, purchase_price, sell_price, metadata, ped_model, ped_scenario, zone_length, zone_width, zone_min_z, zone_max_z) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', {
+            identifier,
+            label,
+            typeKey,
+            EncodeCoords({ x = x, y = y, z = z, w = heading }),
+            heading,
+            purchasePrice,
+            sellPrice,
+            metadataJson,
+            pedModel,
+            pedScenario,
+            zoneLength,
+            zoneWidth,
+            zoneMinZ,
+            zoneMaxZ,
+        })
+    end)
 
-    if not insertId then
-        Utils.Notify(src, 'Shop konnte nicht erstellt werden.', 'error')
+    if not insertOk then
+        Utils.Debug('Failed to create shop %s: %s', identifier, insertResult)
+        Utils.Notify(src, 'Shop konnte nicht erstellt werden (Datenbankfehler).', 'error')
         return nil, 'db_error'
     end
 
-    PersistCreatorData(insertId, metadata.creator)
+    local insertId = insertResult
+    if not insertId then
+        Utils.Notify(src, 'Shop konnte nicht erstellt werden (Datenbankfehler).', 'error')
+        return nil, 'db_error'
+    end
+
+    local persisted, persistErr = PersistCreatorData(insertId, metadata.creator)
+    if not persisted then
+        Utils.Debug('Failed to persist creator data for new shop %s: %s', identifier, persistErr or 'unknown')
+        pcall(function()
+            MySQL.update.await('DELETE FROM ws_shops WHERE id = ?', { insertId })
+        end)
+        Utils.Notify(src, 'Shop konnte nicht erstellt werden (Datenbankfehler).', 'error')
+        return nil, 'db_error'
+    end
 
     return WSShops.DB.Refresh(identifier)
 end
@@ -1440,15 +1488,6 @@ RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
     if not PlayerIsAdmin(src) then return end
     if type(payload) ~= 'table' then return end
 
-    if WSShops.Migrations and WSShops.Migrations.EnsureSchema then
-        local ok, err = pcall(WSShops.Migrations.EnsureSchema)
-        if not ok then
-            Utils.Debug('Schema ensure failed for admin save: %s', err)
-            Utils.Notify(src, 'Shop konnte nicht gespeichert werden (Datenbankschema).', 'error')
-            return
-        end
-    end
-
     local identifier = payload.identifier
     if not identifier and payload.isNew then
         identifier = NormalizeIdentifier(payload.proposedIdentifier or payload.label)
@@ -1596,24 +1635,37 @@ RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
         return
     end
 
-    PersistCreatorData(shop.id, creator)
+    local persisted, persistErr = PersistCreatorData(shop.id, creator)
+    if not persisted then
+        Utils.Debug('Failed to persist creator data for shop %s: %s', shop.identifier or '?', persistErr or 'unknown')
+        Utils.Notify(src, 'Shop konnte nicht gespeichert werden (Datenbankfehler).', 'error')
+        return
+    end
 
-    MySQL.update.await('UPDATE ws_shops SET label = ?, type = ?, coords = ?, heading = ?, purchase_price = ?, sell_price = ?, metadata = ?, ped_model = ?, ped_scenario = ?, zone_length = ?, zone_width = ?, zone_min_z = ?, zone_max_z = ?, updated_at = NOW() WHERE id = ?', {
-        shop.label,
-        shop.type,
-        EncodeCoords({ x = x, y = y, z = z, w = heading }),
-        heading,
-        shop.purchasePrice or purchasePrice,
-        shop.sellPrice or sellPrice,
-        metadataJson,
-        pedModel,
-        pedScenario,
-        zoneLength,
-        zoneWidth,
-        zoneMinZ,
-        zoneMaxZ,
-        shop.id,
-    })
+    local updateOk, updateErr = pcall(function()
+        MySQL.update.await('UPDATE ws_shops SET label = ?, type = ?, coords = ?, heading = ?, purchase_price = ?, sell_price = ?, metadata = ?, ped_model = ?, ped_scenario = ?, zone_length = ?, zone_width = ?, zone_min_z = ?, zone_max_z = ?, updated_at = NOW() WHERE id = ?', {
+            shop.label,
+            shop.type,
+            EncodeCoords({ x = x, y = y, z = z, w = heading }),
+            heading,
+            shop.purchasePrice or purchasePrice,
+            shop.sellPrice or sellPrice,
+            metadataJson,
+            pedModel,
+            pedScenario,
+            zoneLength,
+            zoneWidth,
+            zoneMinZ,
+            zoneMaxZ,
+            shop.id,
+        })
+    end)
+
+    if not updateOk then
+        Utils.Debug('Failed to update shop %s: %s', shop.identifier or '?', updateErr)
+        Utils.Notify(src, 'Shop konnte nicht gespeichert werden (Datenbankfehler).', 'error')
+        return
+    end
 
     shop = WSShops.DB.Refresh(shop.identifier) or shop
 
