@@ -141,8 +141,8 @@ end
 
 local function BuildShop(row)
     local identifier = row.identifier
-    local configShop = Config.Shops[identifier] or {}
-    local shopType = configShop.type or row.type
+    local configShop = Utils.DeepCopy(Config.Shops[identifier] or {})
+    local shopType = row.type or configShop.type
     local shopTypeConfig = Config.ShopTypes[shopType] or {}
     local inventory = {}
     local baseProducts = (shopTypeConfig and shopTypeConfig.baseProducts) or {}
@@ -202,7 +202,34 @@ local function BuildShop(row)
         if ok and decoded then metadata = decoded end
     end
 
-    local coords = configShop.coords or DecodeCoords(row.coords)
+    local creator = metadata.creator or {}
+
+    if metadata.ped and not creator.ped then
+        creator.ped = metadata.ped
+    end
+    if metadata.zone and not creator.zone then
+        creator.zone = metadata.zone
+    end
+    if metadata.blip and not creator.blip then
+        creator.blip = metadata.blip
+    end
+
+    metadata.creator = creator
+
+    if creator.ped then
+        configShop.ped = creator.ped
+    end
+    if creator.zone then
+        configShop.zone = creator.zone
+    end
+    if creator.blip then
+        configShop.blip = creator.blip
+    end
+
+    local coords = creator.coords and vector3(creator.coords.x, creator.coords.y, creator.coords.z)
+        or configShop.coords or DecodeCoords(row.coords)
+    local headingOverride = creator.heading or (creator.coords and creator.coords.w)
+    local heading = headingOverride or configShop.heading or row.heading or 0.0
 
     local purchasePrice = row.purchase_price
     if (not purchasePrice or purchasePrice <= 0) then
@@ -232,7 +259,7 @@ local function BuildShop(row)
         label = row.label,
         type = shopType,
         coords = coords,
-        heading = configShop.heading or row.heading or 0.0,
+        heading = heading,
         owner = row.owner_citizenid,
         ownerName = row.owner_name,
         level = row.level,
@@ -277,6 +304,9 @@ function WSShops.DB.LoadAll()
         total = total + 1
     end
     Utils.Debug('Loaded %s shops into cache', total)
+    if WSShops.BroadcastShopCache then
+        WSShops.BroadcastShopCache()
+    end
 end
 
 function WSShops.DB.Refresh(identifier)
@@ -310,18 +340,7 @@ end)
 
 RegisterNetEvent('ws-shopsystem:server:requestShopCache', function()
     local src = source
-    local payload = {}
-
-    for identifier, shop in pairs(Cache.ShopsByIdentifier) do
-        payload[#payload + 1] = {
-            identifier = identifier,
-            label = shop.label,
-            coords = Utils.VecToTable(shop.coords),
-            type = shop.type,
-            owner = shop.owner,
-            level = shop.level,
-        }
+    if WSShops.BroadcastShopCache then
+        WSShops.BroadcastShopCache(src)
     end
-
-    TriggerClientEvent('ws-shopsystem:client:receiveShopCache', src, payload)
 end)
