@@ -271,8 +271,9 @@ RegisterNUICallback('adminClose', function(_, cb)
 end)
 
 RegisterNUICallback('adminSaveShop', function(data, cb)
-    TriggerServerEvent('ws-shopsystem:server:adminSaveShop', data)
-    cb('ok')
+    QBCore.Functions.TriggerCallback('ws-shopsystem:server:adminSaveShop', function(result)
+        cb(result or { success = false })
+    end, data)
 end)
 
 RegisterNUICallback('adminGetPlayerCoords', function(_, cb)

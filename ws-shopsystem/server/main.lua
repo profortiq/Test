@@ -358,21 +358,25 @@ local function SyncInventoryRecords(shop, payloadInventory)
     end
 end
 
-local function CreateShopFromPayload(payload, src)
+local function CreateShopFromPayload(payload, src, suppressNotify)
+    local function notify(message, nType)
+        if suppressNotify then return end
+        Utils.Notify(src, message, nType or 'error')
+    end
     local identifier = NormalizeIdentifier(payload.identifier)
     if not identifier then
-        Utils.Notify(src, 'Ungültige Shop-ID.', 'error')
+        notify('Ungültige Shop-ID.', 'error')
         return nil, 'invalid_identifier'
     end
 
     if GetShop(identifier) or MySQL.single.await('SELECT id FROM ws_shops WHERE identifier = ?', { identifier }) then
-        Utils.Notify(src, 'Ein Shop mit dieser ID existiert bereits.', 'error')
+        notify('Ein Shop mit dieser ID existiert bereits.', 'error')
         return nil, 'duplicate'
     end
 
     local typeKey = payload.type
     if not typeKey or not Config.ShopTypes[typeKey] then
-        Utils.Notify(src, 'Ungültiger Shop-Typ.', 'error')
+        notify('Ungültiger Shop-Typ.', 'error')
         return nil, 'invalid_type'
     end
 
@@ -448,7 +452,7 @@ local function CreateShopFromPayload(payload, src)
     local metadataJson, metadataErr = EncodeForJson(metadata)
     if not metadataJson then
         Utils.Debug('Failed to encode metadata for new shop %s: %s', identifier, metadataErr or 'unknown')
-        Utils.Notify(src, 'Shop konnte nicht erstellt werden (Metadatenfehler).', 'error')
+        notify('Shop konnte nicht erstellt werden (Metadatenfehler).', 'error')
         return nil, 'metadata_encode_error'
     end
 
@@ -473,13 +477,13 @@ local function CreateShopFromPayload(payload, src)
 
     if not insertOk then
         Utils.Debug('Failed to create shop %s: %s', identifier, insertResult)
-        Utils.Notify(src, 'Shop konnte nicht erstellt werden (Datenbankfehler).', 'error')
+        notify('Shop konnte nicht erstellt werden (Datenbankfehler).', 'error')
         return nil, 'db_error'
     end
 
     local insertId = insertResult
     if not insertId then
-        Utils.Notify(src, 'Shop konnte nicht erstellt werden (Datenbankfehler).', 'error')
+        notify('Shop konnte nicht erstellt werden (Datenbankfehler).', 'error')
         return nil, 'db_error'
     end
 
@@ -489,12 +493,20 @@ local function CreateShopFromPayload(payload, src)
         pcall(function()
             MySQL.update.await('DELETE FROM ws_shops WHERE id = ?', { insertId })
         end)
-        Utils.Notify(src, 'Shop konnte nicht erstellt werden (Datenbankfehler).', 'error')
+        notify('Shop konnte nicht erstellt werden (Datenbankfehler).', 'error')
         return nil, 'db_error'
     end
 
     return WSShops.DB.Refresh(identifier)
 end
+
+local CreateShopErrorMessages = {
+    invalid_identifier = 'Ungültige Shop-ID.',
+    duplicate = 'Ein Shop mit dieser ID existiert bereits.',
+    invalid_type = 'Ungültiger Shop-Typ.',
+    metadata_encode_error = 'Shop konnte nicht erstellt werden (Metadatenfehler).',
+    db_error = 'Shop konnte nicht erstellt werden (Datenbankfehler).',
+}
 
 local function PlayerIsAdmin(src)
     return QBCore.Functions.HasPermission(src, 'god') or QBCore.Functions.HasPermission(src, 'admin')
@@ -1483,18 +1495,20 @@ RegisterNetEvent('ws-shopsystem:server:failDelivery', function(identifier, deliv
     Utils.Notify(src, Utils.Locale('error.delivery_failed'), 'error')
 end)
 
-RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
-    local src = source
-    if not PlayerIsAdmin(src) then return end
-    if type(payload) ~= 'table' then return end
+local function AdminSaveShopInternal(src, payload)
+    if not PlayerIsAdmin(src) then
+        return false, nil, 'Keine Berechtigung für diese Aktion.'
+    end
+    if type(payload) ~= 'table' then
+        return false, nil, 'Ungültige Daten übermittelt.'
+    end
 
     local identifier = payload.identifier
     if not identifier and payload.isNew then
         identifier = NormalizeIdentifier(payload.proposedIdentifier or payload.label)
     end
     if not identifier then
-        Utils.Notify(src, 'Keine gültige Shop-ID angegeben.', 'error')
-        return
+        return false, nil, 'Keine gültige Shop-ID angegeben.'
     end
 
     payload.identifier = identifier
@@ -1502,12 +1516,14 @@ RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
     local shop = GetShop(identifier)
     if not shop then
         if payload.isNew then
-            local created = CreateShopFromPayload(payload, src)
-            if not created then return end
+            local created, reason = CreateShopFromPayload(payload, src, true)
+            if not created then
+                local message = CreateShopErrorMessages[reason] or 'Shop konnte nicht erstellt werden.'
+                return false, nil, message
+            end
             shop = created
         else
-            Utils.Notify(src, 'Shop wurde nicht gefunden.', 'error')
-            return
+            return false, nil, 'Shop wurde nicht gefunden.'
         end
     end
 
@@ -1631,15 +1647,13 @@ RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
     local metadataJson, metadataErr = EncodeForJson(shop.metadata)
     if not metadataJson then
         Utils.Debug('Failed to encode metadata for shop %s: %s', shop.identifier or '?', metadataErr or 'unknown')
-        Utils.Notify(src, 'Shop konnte nicht gespeichert werden (Metadatenfehler).', 'error')
-        return
+        return false, nil, 'Shop konnte nicht gespeichert werden (Metadatenfehler).'
     end
 
     local persisted, persistErr = PersistCreatorData(shop.id, creator)
     if not persisted then
         Utils.Debug('Failed to persist creator data for shop %s: %s', shop.identifier or '?', persistErr or 'unknown')
-        Utils.Notify(src, 'Shop konnte nicht gespeichert werden (Datenbankfehler).', 'error')
-        return
+        return false, nil, 'Shop konnte nicht gespeichert werden (Datenbankfehler).'
     end
 
     local updateOk, updateErr = pcall(function()
@@ -1663,8 +1677,7 @@ RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
 
     if not updateOk then
         Utils.Debug('Failed to update shop %s: %s', shop.identifier or '?', updateErr)
-        Utils.Notify(src, 'Shop konnte nicht gespeichert werden (Datenbankfehler).', 'error')
-        return
+        return false, nil, 'Shop konnte nicht gespeichert werden (Datenbankfehler).'
     end
 
     shop = WSShops.DB.Refresh(shop.identifier) or shop
@@ -1685,8 +1698,35 @@ RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
         heading = shop.heading,
     })
 
+    return true, BuildAdminPayload(), nil
+end
+
+RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
+    local src = source
+    local success, adminPayload, errorMessage = AdminSaveShopInternal(src, payload)
+    if not success then
+        if errorMessage then
+            Utils.Notify(src, errorMessage, 'error')
+        end
+        return
+    end
+
     Utils.Notify(src, Utils.Locale('success.shop_saved'), 'success')
-    TriggerClientEvent('ws-shopsystem:client:openAdminOverview', src, BuildAdminPayload())
+    TriggerClientEvent('ws-shopsystem:client:openAdminOverview', src, adminPayload)
+end)
+
+QBCore.Functions.CreateCallback('ws-shopsystem:server:adminSaveShop', function(source, cb, payload)
+    local success, adminPayload, errorMessage = AdminSaveShopInternal(source, payload)
+    if not success then
+        if errorMessage then
+            Utils.Notify(source, errorMessage, 'error')
+        end
+        cb({ success = false, message = errorMessage })
+        return
+    end
+
+    Utils.Notify(source, Utils.Locale('success.shop_saved'), 'success')
+    cb({ success = true, payload = adminPayload })
 end)
 
 QBCore.Functions.CreateCallback('ws-shopsystem:server:getShopData', function(source, cb, identifier)

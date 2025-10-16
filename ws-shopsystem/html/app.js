@@ -1776,8 +1776,20 @@ const handleAdminClick = async (event) => {
             state.admin.draft.identifier = payload.identifier;
         }
         state.admin.pendingSelection = payload.identifier;
-        send('adminSaveShop', payload);
+        const result = await nuiInvoke('adminSaveShop', payload);
+        if (!result || !result.success) {
+            state.admin.pendingSelection = null;
+            state.admin.dirty = true;
+            updateAdminSaveButton();
+            return;
+        }
         state.admin.dirty = false;
+        if (result.payload) {
+            setAdminData(result.payload);
+            renderAdminList();
+            renderAdminDetail();
+            updateAdminActionButtons();
+        }
         updateAdminSaveButton();
     } else if (action === 'admin-reset') {
         if (state.admin.createMode) {
