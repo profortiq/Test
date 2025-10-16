@@ -5,6 +5,27 @@ local Utils = WSShops.Utils
 WSShops.Deliveries = WSShops.Deliveries or {}
 local Deliveries = WSShops.Deliveries
 
+
+local function EncodeMetadata(data)
+    if not data then return '{}' end
+    local encoded, err
+    if WSShops and WSShops.EncodeForJson then
+        encoded, err = WSShops.EncodeForJson(data)
+    else
+        local ok
+        ok, encoded = pcall(json.encode, data)
+        if not ok then
+            err = encoded
+            encoded = nil
+        end
+    end
+    if not encoded then
+        Utils.Debug('Failed to encode delivery metadata: %s', err or 'unknown')
+        return '{}'
+    end
+    return encoded
+end
+
 local function GenerateIdentifier(shop)
     local prefix = (shop.identifier or ("SHOP" .. tostring(shop.id or ''))):upper()
     local suffix = math.random(1000, 9999)
@@ -260,7 +281,11 @@ function Deliveries.Create(shop, citizenid, data)
         distance,
         payout,
         penalty,
+
+        EncodeMetadata(metadata),
+
         json.encode(metadata),
+
     })
 
     if not deliveryId then return nil end
@@ -372,7 +397,11 @@ function Deliveries.Start(shop, player, deliveryIdentifier, vehicleKey, customPl
         citizenid = player.PlayerData.citizenid,
         vehicle_model = delivery.vehicle_model,
         vehicle_plate = plate,
+
+        metadata = EncodeMetadata(delivery.metadata),
+
         metadata = json.encode(delivery.metadata),
+
     })
 
     local fuelCost = math.floor((Config.DeliveryFuelCostPerKm or 0) * (delivery.distance or 0))

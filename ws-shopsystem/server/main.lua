@@ -38,10 +38,32 @@ local function ResetShopOwner(shop)
     })
 end
 
+local SanitizeForClient -- forward declaration
+
+local function EncodeForJson(value)
+    if value == nil then return nil end
+    local sanitized = value
+    if SanitizeForClient then
+        sanitized = SanitizeForClient(value)
+    end
+    local ok, encoded = pcall(json.encode, sanitized)
+    if not ok then
+        return nil, encoded
+    end
+    return encoded, nil
+end
+
+WSShops.EncodeForJson = EncodeForJson
+
 local function SaveMetadata(shop)
     if not shop.metadata then return end
+    local encoded, err = EncodeForJson(shop.metadata)
+    if not encoded then
+        Utils.Debug('Failed to encode metadata for shop %s: %s', shop.identifier or '?', err or 'unknown')
+        return
+    end
     MySQL.update.await('UPDATE ws_shops SET metadata = ?, updated_at = NOW() WHERE id = ?', {
-        json.encode(shop.metadata),
+        encoded,
         shop.id,
     })
 end
@@ -275,6 +297,16 @@ local function CreateShopFromPayload(payload, src)
         end
     end
 
+
+    local metadataJson, metadataErr = EncodeForJson(metadata)
+    if not metadataJson then
+        Utils.Debug('Failed to encode metadata for new shop %s: %s', identifier, metadataErr or 'unknown')
+        Utils.Notify(src, 'Shop konnte nicht erstellt werden (Metadatenfehler).', 'error')
+        return nil, 'metadata_encode_error'
+    end
+
+
+
     local insertId = MySQL.insert.await('INSERT INTO ws_shops (identifier, label, type, coords, heading, purchase_price, sell_price, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', {
         identifier,
         label,
@@ -283,7 +315,11 @@ local function CreateShopFromPayload(payload, src)
         heading,
         purchasePrice,
         sellPrice,
+
+        metadataJson,
+
         json.encode(metadata),
+
     })
 
     if not insertId then
@@ -356,6 +392,9 @@ local function SeedInventoryForCategories(shop, categories)
     end
     WSShops.FetchInventory(shop)
 end
+
+
+SanitizeForClient = function(value)
 
 local function SanitizeForClient(value)
     local t = type(value)
@@ -545,13 +584,23 @@ function WSShops.UpdateBalance(shop, amount, reason, metadata)
         shop.id,
     })
 
+    local financePayload
+    if metadata then
+        local encoded, encodeErr = EncodeForJson(metadata)
+        if not encoded then
+            Utils.Debug('Failed to encode finance metadata for shop %s: %s', shop.identifier or '?', encodeErr or 'unknown')
+        else
+            financePayload = encoded
+        end
+    end
+
     MySQL.insert.await('INSERT INTO ws_shop_finance_log (shop_id, type, amount, balance_after, description, payload) VALUES (?, ?, ?, ?, ?, ?)', {
         shop.id,
         reason or 'unknown',
         amount,
         shop.balance,
         reason,
-        metadata and json.encode(metadata) or nil,
+        financePayload,
     })
 end
 
@@ -1392,7 +1441,16 @@ RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
         seededInventory = true
     end
 
+
+    local metadataJson, metadataErr = EncodeForJson(shop.metadata)
+    if not metadataJson then
+        Utils.Debug('Failed to encode metadata for shop %s: %s', shop.identifier or '?', metadataErr or 'unknown')
+        Utils.Notify(src, 'Shop konnte nicht gespeichert werden (Metadatenfehler).', 'error')
+        return
+    end
+
     local metadataJson = json.encode(shop.metadata)
+
 
     MySQL.update.await('UPDATE ws_shops SET label = ?, type = ?, coords = ?, heading = ?, purchase_price = ?, sell_price = ?, metadata = ?, updated_at = NOW() WHERE id = ?', {
         shop.label,
