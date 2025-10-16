@@ -43,11 +43,12 @@ Stelle sicher, dass alle Ressourcen aktuell sind und **vor** `ws-shopsystem` in 
 Alle Einstellungen findest du in `config.lua`. Wichtige Bereiche:
 
 - **Allgemein (`WSShopConfig`)**: Sprache, Ziel-Modus (`UseTarget`), Low-Stock-Schwellen, Benachrichtigungen, Befehle. `InteractionKey` und `ManagementKey` dienen als Fallback-Steuerung, falls `qb-target` nicht genutzt wird.
+- **Admin-Zugriff (`WSShopConfig.AdminAccess`)**: Definiere, welche QB-Core Berechtigungen, Ace-Gruppen, Identifiers oder CitizenIDs den Shop-Creator öffnen dürfen.
 - **XP / Level (`WSShopConfig.XP`, `WSShopConfig.Levels`)**: Erfahrung pro Aktion, freischaltbare Features, Fahrzeuge, Rabatte.
 - **Rollen (`WSShopConfig.Roles`)**: Berechtigungen, Standardlöhne, Zugriff auf Menüpunkte.
 - **Shoptypen (`WSShopConfig.ShopTypes`)**: Artikel, Preise, Icons, Kauf-/Verkaufspreise.
-- **Shops (`WSShopConfig.Shops`)**: Weltposition, Ped, Blip, Standardlager.
-- **Depots & Fahrzeuge (`WSShopConfig.Depots`, `WSShopConfig.DeliveryVehicles`)**: Lieferorte, Kapazitäten, Levelanforderungen.
+- **Shop-Liste (`WSShopConfig.Shops`)**: Wird bewusst leer gelassen. Neue Shops werden vollständig über das Admin-Panel erstellt und landen direkt in der Datenbank.
+- **Depots & Fahrzeuge (`WSShopConfig.Depots`, `WSShopConfig.DeliveryVehicles`)**: Globale Depot-Vorschläge und Fahrzeugtemplates. Konkrete Standorte, Spawns, Dropoffs & Inventar werden im Admin-Panel gepflegt und in der Datenbank gespeichert.
 - **Benachrichtigungen (`WSShopConfig.Notifications`)**: Mail-Texte, Webhook-Einstellungen.
 
 > **Hinweis:** Alle Umlaute wurden als ASCII (z. B. `ae`, `oe`) hinterlegt, damit selbst bei ANSI-Encoding keine Probleme auftreten. Passe Texte nach Bedarf an.
@@ -85,7 +86,7 @@ Alle Einstellungen findest du in `config.lua`. Wichtige Bereiche:
 
 | Befehl           | Beschreibung                          | Berechtigung (QBCore ACL) |
 |------------------|---------------------------------------|---------------------------|
-| `/shopadmin`     | Admin-Übersicht aller Shops öffnen    | `admin`                   |
+| `/shopadmin`     | Admin-Übersicht aller Shops öffnen    | Laut `WSShopConfig.AdminAccess` |
 
 Weitere Aktionen laufen über den NUI-Workflow oder `qb-target` (Interaktionen am Shop).
 

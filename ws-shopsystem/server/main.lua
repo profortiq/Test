@@ -2,6 +2,78 @@ local QBCore = exports['qb-core']:GetCoreObject()
 local Config = WSShopConfig
 local Utils = WSShops.Utils
 
+local AdminAccess = {
+    qbPermissions = {},
+    aceGroups = {},
+    identifiers = {},
+    citizenIds = {},
+}
+
+local function BuildAdminAccess()
+    AdminAccess.qbPermissions = {}
+    AdminAccess.aceGroups = {}
+    AdminAccess.identifiers = {}
+    AdminAccess.citizenIds = {}
+
+    local cfg = Config.AdminAccess or {}
+
+    local function ingestList(list, asSet, transform, target)
+        if type(list) ~= 'table' then return end
+        transform = transform or function(value) return value end
+        local seen = {}
+
+        local function addValue(value)
+            if asSet then
+                target[value] = true
+            else
+                if not seen[value] then
+                    target[#target + 1] = value
+                    seen[value] = true
+                end
+            end
+        end
+
+        for _, value in ipairs(list) do
+            if type(value) == 'string' then
+                local normalized = transform(value)
+                addValue(normalized)
+            end
+        end
+
+        for key, value in pairs(list) do
+            if type(key) == 'string' then
+                local shouldInclude = value
+                if type(value) == 'boolean' then
+                    shouldInclude = value
+                elseif type(value) == 'number' then
+                    shouldInclude = value ~= 0
+                elseif type(value) == 'string' then
+                    shouldInclude = true
+                end
+
+                if shouldInclude then
+                    local normalized = transform(key)
+                    addValue(normalized)
+                end
+            elseif type(value) == 'string' then
+                local normalized = transform(value)
+                addValue(normalized)
+            end
+        end
+    end
+
+    ingestList(cfg.QBPermissions, false, function(value) return value end, AdminAccess.qbPermissions)
+    ingestList(cfg.AceGroups, false, function(value) return value end, AdminAccess.aceGroups)
+    ingestList(cfg.Identifiers, true, function(value) return value:lower() end, AdminAccess.identifiers)
+    ingestList(cfg.CitizenIds, true, function(value) return value:upper() end, AdminAccess.citizenIds)
+
+    if #AdminAccess.qbPermissions == 0 and cfg.QBPermissions == nil then
+        AdminAccess.qbPermissions = { 'god', 'admin' }
+    end
+end
+
+BuildAdminAccess()
+
 local function GetShop(identifier)
     local shop = WSShops.GetByIdentifier(identifier)
     if not shop then
@@ -509,7 +581,53 @@ local CreateShopErrorMessages = {
 }
 
 local function PlayerIsAdmin(src)
-    return QBCore.Functions.HasPermission(src, 'god') or QBCore.Functions.HasPermission(src, 'admin')
+    for _, permission in ipairs(AdminAccess.qbPermissions) do
+        if QBCore.Functions.HasPermission(src, permission) then
+            return true
+        end
+    end
+
+    for _, group in ipairs(AdminAccess.aceGroups) do
+        if IsPlayerAceAllowed(src, group) then
+            return true
+        end
+    end
+
+    if next(AdminAccess.identifiers) then
+        local identifiers = GetPlayerIdentifiers(src) or {}
+        for _, identifier in ipairs(identifiers) do
+            if AdminAccess.identifiers[identifier:lower()] then
+                return true
+            end
+        end
+    end
+
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return false end
+
+    local citizenid = Player.PlayerData and Player.PlayerData.citizenid
+    if citizenid and AdminAccess.citizenIds[citizenid:upper()] then
+        return true
+    end
+
+    local function CheckLicenseString(value)
+        if type(value) ~= 'string' then return false end
+        return AdminAccess.identifiers['license:' .. value:lower()] == true
+    end
+
+    if Player.PlayerData then
+        if CheckLicenseString(Player.PlayerData.license) then
+            return true
+        end
+        local metadata = Player.PlayerData.metadata
+        if metadata then
+            if CheckLicenseString(metadata.licence) or CheckLicenseString(metadata.license) then
+                return true
+            end
+        end
+    end
+
+    return false
 end
 
 local function BuildShopCachePayload()
