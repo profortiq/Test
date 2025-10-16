@@ -52,26 +52,9 @@ const send = (action, data = {}) => {
     }).catch((error) => console.error('NUI send failed', action, error));
 };
 
-const invoke = async (action, data = {}) => {
+const nuiInvoke = async (action, data = {}) => {
     try {
         const response = await fetch(`https://${resourceName}/${action}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json; charset=UTF-8',
-            },
-            body: JSON.stringify(data),
-        });
-        if (!response.ok) return null;
-        const payload = await response.json().catch(() => null);
-        return payload;
-    } catch (error) {
-        return null;
-    }
-};
-
-const invoke = async (action, data = {}) => {
-    try {
-        const response = await fetch(`https://ws-shopsystem/${action}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json; charset=UTF-8',
@@ -991,7 +974,7 @@ const buildNewAdminDraft = (type, coords) => {
 };
 
 const fetchCurrentPosition = async () => {
-    const payload = await invoke('adminGetPlayerCoords');
+    const payload = await nuiInvoke('adminGetPlayerCoords');
     if (!payload) return null;
     const coords = payload.coords || payload;
     if (!coords) return null;
