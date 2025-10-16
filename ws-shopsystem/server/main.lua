@@ -297,15 +297,12 @@ local function CreateShopFromPayload(payload, src)
         end
     end
 
-
     local metadataJson, metadataErr = EncodeForJson(metadata)
     if not metadataJson then
         Utils.Debug('Failed to encode metadata for new shop %s: %s', identifier, metadataErr or 'unknown')
         Utils.Notify(src, 'Shop konnte nicht erstellt werden (Metadatenfehler).', 'error')
         return nil, 'metadata_encode_error'
     end
-
-
 
     local insertId = MySQL.insert.await('INSERT INTO ws_shops (identifier, label, type, coords, heading, purchase_price, sell_price, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', {
         identifier,
@@ -315,11 +312,7 @@ local function CreateShopFromPayload(payload, src)
         heading,
         purchasePrice,
         sellPrice,
-
         metadataJson,
-
-        json.encode(metadata),
-
     })
 
     if not insertId then
@@ -334,20 +327,36 @@ local function PlayerIsAdmin(src)
     return QBCore.Functions.HasPermission(src, 'god') or QBCore.Functions.HasPermission(src, 'admin')
 end
 
-local function BroadcastShopCache()
+local function BuildShopCachePayload()
     local payload = {}
     for identifier, shop in pairs(WSShops.Cache and WSShops.Cache.ShopsByIdentifier or {}) do
         payload[#payload + 1] = {
             identifier = identifier,
             label = shop.label,
             coords = SanitizeForClient(shop.coords),
+            heading = shop.heading,
             type = shop.type,
             owner = shop.owner,
             level = shop.level,
+            config = SanitizeForClient(shop.config or {}),
+            metadata = SanitizeForClient(shop.metadata or {}),
         }
     end
-    TriggerClientEvent('ws-shopsystem:client:receiveShopCache', -1, payload)
+    table.sort(payload, function(a, b)
+        local aLabel = a.label or a.identifier
+        local bLabel = b.label or b.identifier
+        return aLabel < bLabel
+    end)
+    return payload
 end
+
+local function BroadcastShopCache(target)
+    local payload = BuildShopCachePayload()
+    TriggerClientEvent('ws-shopsystem:client:receiveShopCache', target or -1, payload)
+end
+
+WSShops.BuildShopCachePayload = BuildShopCachePayload
+WSShops.BroadcastShopCache = BroadcastShopCache
 
 local function SeedInventoryForCategories(shop, categories)
     if type(categories) ~= 'table' then return end
@@ -393,10 +402,7 @@ local function SeedInventoryForCategories(shop, categories)
     WSShops.FetchInventory(shop)
 end
 
-
 SanitizeForClient = function(value)
-
-local function SanitizeForClient(value)
     local t = type(value)
     if t == 'vector3' then
         return { x = value.x, y = value.y, z = value.z }
@@ -1441,16 +1447,12 @@ RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
         seededInventory = true
     end
 
-
     local metadataJson, metadataErr = EncodeForJson(shop.metadata)
     if not metadataJson then
         Utils.Debug('Failed to encode metadata for shop %s: %s', shop.identifier or '?', metadataErr or 'unknown')
         Utils.Notify(src, 'Shop konnte nicht gespeichert werden (Metadatenfehler).', 'error')
         return
     end
-
-    local metadataJson = json.encode(shop.metadata)
-
 
     MySQL.update.await('UPDATE ws_shops SET label = ?, type = ?, coords = ?, heading = ?, purchase_price = ?, sell_price = ?, metadata = ?, updated_at = NOW() WHERE id = ?', {
         shop.label,

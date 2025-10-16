@@ -304,6 +304,9 @@ function WSShops.DB.LoadAll()
         total = total + 1
     end
     Utils.Debug('Loaded %s shops into cache', total)
+    if WSShops.BroadcastShopCache then
+        WSShops.BroadcastShopCache()
+    end
 end
 
 function WSShops.DB.Refresh(identifier)
@@ -337,18 +340,7 @@ end)
 
 RegisterNetEvent('ws-shopsystem:server:requestShopCache', function()
     local src = source
-    local payload = {}
-
-    for identifier, shop in pairs(Cache.ShopsByIdentifier) do
-        payload[#payload + 1] = {
-            identifier = identifier,
-            label = shop.label,
-            coords = Utils.VecToTable(shop.coords),
-            type = shop.type,
-            owner = shop.owner,
-            level = shop.level,
-        }
+    if WSShops.BroadcastShopCache then
+        WSShops.BroadcastShopCache(src)
     end
-
-    TriggerClientEvent('ws-shopsystem:client:receiveShopCache', src, payload)
 end)
