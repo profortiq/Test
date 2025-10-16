@@ -5,6 +5,7 @@ local Utils = WSShops.Utils
 WSShops.Deliveries = WSShops.Deliveries or {}
 local Deliveries = WSShops.Deliveries
 
+
 local function EncodeMetadata(data)
     if not data then return '{}' end
     local encoded, err
@@ -280,7 +281,11 @@ function Deliveries.Create(shop, citizenid, data)
         distance,
         payout,
         penalty,
+
         EncodeMetadata(metadata),
+
+        json.encode(metadata),
+
     })
 
     if not deliveryId then return nil end
@@ -392,7 +397,11 @@ function Deliveries.Start(shop, player, deliveryIdentifier, vehicleKey, customPl
         citizenid = player.PlayerData.citizenid,
         vehicle_model = delivery.vehicle_model,
         vehicle_plate = plate,
+
         metadata = EncodeMetadata(delivery.metadata),
+
+        metadata = json.encode(delivery.metadata),
+
     })
 
     local fuelCost = math.floor((Config.DeliveryFuelCostPerKm or 0) * (delivery.distance or 0))
