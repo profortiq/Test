@@ -1,3 +1,7 @@
+const resourceName = typeof GetParentResourceName === 'function'
+    ? GetParentResourceName()
+    : 'ws-shopsystem';
+
 const state = {
     visible: false,
     view: 'shop',
@@ -39,13 +43,30 @@ const managementTabs = [
 ];
 
 const send = (action, data = {}) => {
-    fetch(`https://ws-shopsystem/${action}`, {
+    fetch(`https://${resourceName}/${action}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json; charset=UTF-8',
         },
         body: JSON.stringify(data),
-    });
+    }).catch((error) => console.error('NUI send failed', action, error));
+};
+
+const invoke = async (action, data = {}) => {
+    try {
+        const response = await fetch(`https://${resourceName}/${action}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json; charset=UTF-8',
+            },
+            body: JSON.stringify(data),
+        });
+        if (!response.ok) return null;
+        const payload = await response.json().catch(() => null);
+        return payload;
+    } catch (error) {
+        return null;
+    }
 };
 
 const invoke = async (action, data = {}) => {
