@@ -1440,6 +1440,15 @@ RegisterNetEvent('ws-shopsystem:server:adminSaveShop', function(payload)
     if not PlayerIsAdmin(src) then return end
     if type(payload) ~= 'table' then return end
 
+    if WSShops.Migrations and WSShops.Migrations.EnsureSchema then
+        local ok, err = pcall(WSShops.Migrations.EnsureSchema)
+        if not ok then
+            Utils.Debug('Schema ensure failed for admin save: %s', err)
+            Utils.Notify(src, 'Shop konnte nicht gespeichert werden (Datenbankschema).', 'error')
+            return
+        end
+    end
+
     local identifier = payload.identifier
     if not identifier and payload.isNew then
         identifier = NormalizeIdentifier(payload.proposedIdentifier or payload.label)
