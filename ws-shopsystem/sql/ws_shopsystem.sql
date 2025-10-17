@@ -101,6 +101,13 @@ CREATE TABLE IF NOT EXISTS `ws_shop_allowed_vehicles` (
     `shop_id` INT(11) NOT NULL,
     `sort_index` INT(11) NOT NULL DEFAULT 0,
     `vehicle_key` VARCHAR(64) NOT NULL,
+    `model` VARCHAR(60) DEFAULT NULL,
+    `label` VARCHAR(120) DEFAULT NULL,
+    `price` INT(11) NOT NULL DEFAULT 0,
+    `min_level` INT(11) NOT NULL DEFAULT 1,
+    `capacity` INT(11) NOT NULL DEFAULT 0,
+    `trunk_size` INT(11) NOT NULL DEFAULT 0,
+    `fuel_modifier` FLOAT NOT NULL DEFAULT 1.0,
     PRIMARY KEY (`id`),
     UNIQUE KEY `vehicle_unique` (`shop_id`, `vehicle_key`),
     CONSTRAINT `fk_allowed_vehicle_shop` FOREIGN KEY (`shop_id`) REFERENCES `ws_shops` (`id`) ON DELETE CASCADE

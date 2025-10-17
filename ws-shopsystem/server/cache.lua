@@ -286,11 +286,23 @@ local function BuildShop(row)
         end
     end
 
-    local vehicleRows = MySQL.query.await('SELECT vehicle_key FROM ws_shop_allowed_vehicles WHERE shop_id = ? ORDER BY sort_index ASC, id ASC', { row.id }) or {}
+    local vehicleRows = MySQL.query.await('SELECT vehicle_key, model, label, price, min_level, capacity, trunk_size, fuel_modifier FROM ws_shop_allowed_vehicles WHERE shop_id = ? ORDER BY sort_index ASC, id ASC', { row.id }) or {}
     if #vehicleRows > 0 then
         creator.vehicles = {}
         for _, entry in ipairs(vehicleRows) do
-            creator.vehicles[#creator.vehicles + 1] = entry.vehicle_key
+            local fuelModifier = tonumber(entry.fuel_modifier) or 1.0
+            if fuelModifier <= 0 then fuelModifier = 1.0 end
+
+            creator.vehicles[#creator.vehicles + 1] = {
+                key = entry.vehicle_key,
+                model = entry.model,
+                label = entry.label,
+                price = tonumber(entry.price) or 0,
+                minLevel = tonumber(entry.min_level) or 1,
+                capacity = tonumber(entry.capacity) or 0,
+                trunk = tonumber(entry.trunk_size) or 0,
+                fuelModifier = fuelModifier,
+            }
         end
     end
 

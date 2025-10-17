@@ -197,6 +197,13 @@ local tableStatements = {
             `shop_id` INT(11) NOT NULL,
             `sort_index` INT(11) NOT NULL DEFAULT 0,
             `vehicle_key` VARCHAR(64) NOT NULL,
+            `model` VARCHAR(60) DEFAULT NULL,
+            `label` VARCHAR(120) DEFAULT NULL,
+            `price` INT(11) NOT NULL DEFAULT 0,
+            `min_level` INT(11) NOT NULL DEFAULT 1,
+            `capacity` INT(11) NOT NULL DEFAULT 0,
+            `trunk_size` INT(11) NOT NULL DEFAULT 0,
+            `fuel_modifier` FLOAT NOT NULL DEFAULT 1.0,
             PRIMARY KEY (`id`),
             UNIQUE KEY `vehicle_unique` (`shop_id`, `vehicle_key`),
             CONSTRAINT `fk_allowed_vehicle_shop` FOREIGN KEY (`shop_id`) REFERENCES `ws_shops` (`id`) ON DELETE CASCADE
@@ -347,6 +354,13 @@ local columnStatements = {
     { 'ws_shops', 'zone_width', 'ALTER TABLE `ws_shops` ADD COLUMN IF NOT EXISTS `zone_width` FLOAT DEFAULT 2.0' },
     { 'ws_shops', 'zone_min_z', 'ALTER TABLE `ws_shops` ADD COLUMN IF NOT EXISTS `zone_min_z` FLOAT DEFAULT 0' },
     { 'ws_shops', 'zone_max_z', 'ALTER TABLE `ws_shops` ADD COLUMN IF NOT EXISTS `zone_max_z` FLOAT DEFAULT 0' },
+    { 'ws_shop_allowed_vehicles', 'model', 'ALTER TABLE `ws_shop_allowed_vehicles` ADD COLUMN IF NOT EXISTS `model` VARCHAR(60) DEFAULT NULL AFTER `vehicle_key`' },
+    { 'ws_shop_allowed_vehicles', 'label', 'ALTER TABLE `ws_shop_allowed_vehicles` ADD COLUMN IF NOT EXISTS `label` VARCHAR(120) DEFAULT NULL AFTER `model`' },
+    { 'ws_shop_allowed_vehicles', 'price', 'ALTER TABLE `ws_shop_allowed_vehicles` ADD COLUMN IF NOT EXISTS `price` INT(11) NOT NULL DEFAULT 0 AFTER `label`' },
+    { 'ws_shop_allowed_vehicles', 'min_level', 'ALTER TABLE `ws_shop_allowed_vehicles` ADD COLUMN IF NOT EXISTS `min_level` INT(11) NOT NULL DEFAULT 1 AFTER `price`' },
+    { 'ws_shop_allowed_vehicles', 'capacity', 'ALTER TABLE `ws_shop_allowed_vehicles` ADD COLUMN IF NOT EXISTS `capacity` INT(11) NOT NULL DEFAULT 0 AFTER `min_level`' },
+    { 'ws_shop_allowed_vehicles', 'trunk_size', 'ALTER TABLE `ws_shop_allowed_vehicles` ADD COLUMN IF NOT EXISTS `trunk_size` INT(11) NOT NULL DEFAULT 0 AFTER `capacity`' },
+    { 'ws_shop_allowed_vehicles', 'fuel_modifier', 'ALTER TABLE `ws_shop_allowed_vehicles` ADD COLUMN IF NOT EXISTS `fuel_modifier` FLOAT NOT NULL DEFAULT 1.0 AFTER `trunk_size`' },
 }
 
 local function runMigrations()
