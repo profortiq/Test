@@ -17,6 +17,7 @@ local Translations = {
         shop_unowned = 'Dieser Shop wurde noch nicht gekauft.',
         delivery_capacity = 'Fahrzeugkapazitaet ueberschritten.',
         delivery_vehicle_locked = 'Dieses Fahrzeug ist fuer diesen Shop gesperrt.',
+        admin_payload_failed = 'Shopdaten konnten nicht geladen werden.',
     },
     success = {
         shop_purchased = 'Du bist jetzt Besitzer von %s.',

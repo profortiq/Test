@@ -1,4 +1,5 @@
 local QBCore = exports['qb-core']:GetCoreObject()
+local Config = WSShopConfig
 
 WSShopClient = WSShopClient or {}
 WSShopClient.ActiveShop = nil
@@ -307,6 +308,38 @@ RegisterCommand('ws-shop-close', function()
 end, false)
 
 RegisterKeyMapping('ws-shop-close', 'Shop Interface schliessen', 'keyboard', 'BACK')
+
+local adminCommand = Config.ManagementCommand or 'shopadmin'
+local adminSuggestionAdded = false
+
+local function addAdminSuggestion()
+    if adminSuggestionAdded then return end
+    adminSuggestionAdded = true
+    TriggerEvent('chat:addSuggestion', '/' .. adminCommand, 'Öffnet das Shop-Admin-Menü')
+end
+
+local function removeAdminSuggestion()
+    if not adminSuggestionAdded then return end
+    adminSuggestionAdded = false
+    TriggerEvent('chat:removeSuggestion', '/' .. adminCommand)
+end
+
+RegisterCommand(adminCommand, function()
+    TriggerServerEvent('ws-shopsystem:server:openAdminPanel')
+end, false)
+
+CreateThread(function()
+    Wait(1000)
+    addAdminSuggestion()
+end)
+
+RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
+    addAdminSuggestion()
+end)
+
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    removeAdminSuggestion()
+end)
 
 RegisterNetEvent('ws-shopsystem:client:receiveShopCache', function(payload)
     TriggerEvent('ws-shopsystem:client:setupZones', payload)
