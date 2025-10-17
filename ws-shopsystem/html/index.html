@@ -81,13 +81,17 @@
                             <header class="admin-detail__header">
                                 <h2>Creator Panel</h2>
                                 <div class="admin-detail__actions">
+                                    <button class="btn ghost" data-action="admin-show-dashboard">Dashboard</button>
                                     <button class="btn secondary" data-action="admin-start-create">Neuer Shop</button>
                                     <button class="btn ghost hidden" data-action="admin-cancel-create">Erstellung abbrechen</button>
                                     <button class="btn ghost" data-action="admin-reset">Zurücksetzen</button>
                                     <button class="btn primary disabled" data-action="admin-save">Speichern</button>
                                 </div>
                             </header>
-                            <div id="admin-detail" class="admin-detail__content"></div>
+                            <div class="admin-detail__body">
+                                <div id="admin-detail" class="admin-detail__content"></div>
+                                <aside id="admin-section-nav" class="admin-section-nav"></aside>
+                            </div>
                         </section>
                     </div>
                 </section>
@@ -97,6 +101,7 @@
                 <span id="footer-text">Wolfstudio Shopsystem</span>
             </footer>
         </div>
+        <div id="notifications" class="notifications"></div>
     </div>
 
     <script src="app.js"></script>

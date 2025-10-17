@@ -99,8 +99,18 @@ RegisterNetEvent('ws-shopsystem:client:openAdminOverview', function(payload)
         action = 'openAdminOverview',
         shops = payload and payload.shops or {},
         shopTypes = payload and payload.shopTypes or {},
+        vehicleTemplates = payload and payload.vehicleTemplates or payload and payload.deliveryVehicles or {},
         deliveryVehicles = payload and payload.deliveryVehicles or {},
         depots = payload and payload.depots or {},
+    })
+end)
+
+RegisterNetEvent('ws-shopsystem:client:nuiNotify', function(message, nType, duration)
+    SendNUIMessage({
+        action = 'notify',
+        message = message,
+        type = nType,
+        duration = duration,
     })
 end)
 

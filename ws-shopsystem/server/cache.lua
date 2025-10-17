@@ -225,7 +225,7 @@ local function BuildShop(row)
     if metadata.zone and not creator.zone then
         creator.zone = metadata.zone
     end
-    if metadata.blip and not creator.blip then
+    if metadata.blip and creator.blip == nil then
         creator.blip = metadata.blip
     end
 
@@ -326,7 +326,9 @@ local function BuildShop(row)
     if creator.zone then
         configShop.zone = creator.zone
     end
-    if creator.blip then
+    if creator.blip == false then
+        configShop.blip = nil
+    elseif creator.blip then
         configShop.blip = creator.blip
     end
 

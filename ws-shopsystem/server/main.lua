@@ -221,6 +221,76 @@ local function SanitizeRoutes(routes)
     return result
 end
 
+local function SanitizeBlip(blipPayload, defaultLabel)
+    if type(blipPayload) ~= 'table' then return nil end
+
+    local enabled = blipPayload.enabled
+    if enabled == nil then
+        if blipPayload.sprite ~= nil or blipPayload.color ~= nil or blipPayload.scale ~= nil or blipPayload.label ~= nil then
+            enabled = true
+        else
+            return nil
+        end
+    end
+
+    if not enabled then
+        return false
+    end
+
+    local spriteProvided = blipPayload.sprite ~= nil
+    local sprite = tonumber(blipPayload.sprite)
+    if spriteProvided then
+        if not sprite or sprite < 1 or sprite > 1000 then
+            return nil, 'Blip-Sprite muss eine Zahl zwischen 1 und 1000 sein.'
+        end
+        sprite = math.floor(sprite)
+    else
+        sprite = 59
+    end
+
+    local colorProvided = blipPayload.color ~= nil
+    local color = tonumber(blipPayload.color)
+    if colorProvided then
+        if not color or color < 0 or color > 85 then
+            return nil, 'Blip-Farbe muss eine Zahl zwischen 0 und 85 sein.'
+        end
+        color = math.floor(color)
+    else
+        color = 1
+    end
+
+    local scaleProvided = blipPayload.scale ~= nil
+    local scale = tonumber(blipPayload.scale)
+    if scaleProvided then
+        if not scale or scale <= 0 or scale > 2.5 then
+            return nil, 'Blip-Skalierung muss zwischen 0.1 und 2.5 liegen.'
+        end
+        scale = math.floor(scale * 100) / 100
+        if scale < 0.1 then scale = 0.1 end
+    else
+        scale = 0.8
+    end
+
+    local label = Trim(blipPayload.label)
+    if label then
+        if #label > 60 then
+            label = label:sub(1, 60)
+        end
+    else
+        label = defaultLabel or 'Shop'
+    end
+
+    local shortRange = blipPayload.shortRange ~= false
+
+    return {
+        sprite = sprite,
+        color = color,
+        scale = scale,
+        label = label,
+        shortRange = shortRange,
+    }
+end
+
 local function SanitizeVehicles(list)
     local sanitized = {}
     if type(list) ~= 'table' then return sanitized end
@@ -1879,6 +1949,18 @@ local function AdminSaveShopInternal(src, payload)
             minZ = tonumber(payload.zone.minZ) or (z - 1.0),
             maxZ = tonumber(payload.zone.maxZ) or (z + 1.0),
         }
+    end
+
+    if type(payload.blip) == 'table' then
+        local blipData, blipError = SanitizeBlip(payload.blip, shop.label or identifier)
+        if blipError then
+            return false, nil, blipError
+        end
+        if blipData == false then
+            creator.blip = false
+        elseif blipData then
+            creator.blip = blipData
+        end
     end
 
     creator.dropoffs = SanitizePointList(payload.dropoffs, false)

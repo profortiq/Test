@@ -10,16 +10,19 @@ const state = {
     cart: [],
     selectedCategory: null,
     managementTab: 'dashboard',
+    notifications: [],
     admin: {
         shops: [],
         selected: null,
         draft: null,
         dirty: false,
         createMode: false,
+        view: 'dashboard',
+        activeSection: 'general',
         pendingSelection: null,
         config: {
             shopTypes: {},
-            deliveryVehicles: {},
+            vehicleTemplates: {},
             depots: [],
         },
     },
@@ -31,6 +34,16 @@ const clone = (value) => {
     } catch (error) {
         return value;
     }
+};
+
+const escapeHtml = (value) => {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 };
 
 const managementTabs = [
@@ -70,6 +83,34 @@ const nuiInvoke = async (action, data = {}) => {
 };
 
 const currency = (value) => `$${Number(value || 0).toLocaleString('de-DE')}`;
+
+let notificationSeq = 0;
+
+const removeNotification = (id) => {
+    const index = state.notifications.findIndex((entry) => entry.id === id);
+    if (index === -1) return;
+    state.notifications.splice(index, 1);
+    renderNotifications();
+};
+
+const pushNotification = (message, type = 'info', duration = 5000) => {
+    if (!message) return null;
+    const id = `notif-${Date.now()}-${notificationSeq++}`;
+    const entry = {
+        id,
+        message,
+        type,
+        expires: Date.now() + Math.max(duration || 0, 1500),
+    };
+    state.notifications.push(entry);
+    renderNotifications();
+    window.setTimeout(() => removeNotification(id), Math.max(duration || 0, 1500));
+    return id;
+};
+
+const showNotification = (message, type = 'info', duration = 5000) => {
+    pushNotification(message, type, duration);
+};
 
 const getCategories = () => {
     if (!state.shop || !state.shop.inventory) return [];
@@ -215,6 +256,23 @@ const renderProducts = () => {
         `;
         grid.appendChild(card);
     });
+};
+
+const renderNotifications = () => {
+    const container = document.getElementById('notifications');
+    if (!container) return;
+    if (!state.notifications || state.notifications.length === 0) {
+        container.innerHTML = '';
+        container.classList.add('hidden');
+        return;
+    }
+    container.classList.remove('hidden');
+    container.innerHTML = state.notifications.map((entry) => `
+        <div class="notification notification--${entry.type || 'info'}" data-id="${entry.id}">
+            <div class="notification__message">${escapeHtml(entry.message)}</div>
+            <button class="notification__close" data-action="notification-close" data-id="${entry.id}" aria-label="Schließen">&times;</button>
+        </div>
+    `).join('');
 };
 
 const renderCart = () => {
@@ -845,6 +903,71 @@ const flattenInventory = (inventory) => {
     return items;
 };
 
+const normalizeVehicleDraftEntry = (entry) => {
+    if (!entry) return null;
+    const templates = state.admin.config.vehicleTemplates || {};
+    const templateFor = (key) => (key && templates[key]) || {};
+
+    if (typeof entry === 'string') {
+        const key = String(entry);
+        const template = templateFor(key);
+        return {
+            key,
+            model: template.model || key,
+            label: template.label || template.name || key,
+            price: toNumber(template.price, 0),
+            minLevel: Math.max(1, toNumber(template.minLevel, 1)),
+            capacity: toNumber(template.capacity, 0),
+            trunk: toNumber(template.trunk, 0),
+            fuelModifier: toNumber(template.fuelModifier ?? 1, 1),
+        };
+    }
+
+    if (typeof entry === 'object') {
+        const key = entry.key
+            || entry.vehicle_key
+            || entry.model
+            || entry.vehicle
+            || entry.spawn
+            || entry.spawnName
+            || entry.modelName
+            || entry.label
+            || entry.name;
+        if (!key) return null;
+        const template = templateFor(key);
+        const model = entry.model
+            || entry.spawn
+            || entry.vehicle
+            || entry.modelName
+            || template.model
+            || key;
+        const label = entry.label
+            || entry.display
+            || entry.name
+            || template.label
+            || template.name
+            || model
+            || key;
+        const price = toNumber(entry.price ?? entry.cost ?? entry.purchasePrice ?? template.price, 0);
+        const minLevel = Math.max(1, toNumber(entry.minLevel ?? entry.min_level ?? entry.level ?? template.minLevel, 1));
+        const capacity = toNumber(entry.capacity ?? entry.cargo ?? entry.maxCapacity ?? template.capacity, 0);
+        const trunk = toNumber(entry.trunk ?? entry.trunk_size ?? entry.trunkInventory ?? template.trunk, 0);
+        const fuel = toNumber(entry.fuelModifier ?? entry.fuel_modifier ?? template.fuelModifier ?? 1, 1);
+        return {
+            key: String(key),
+            model: model || String(key),
+            label: label || model || String(key),
+            price,
+            minLevel,
+            capacity,
+            trunk,
+            fuelModifier: fuel > 0 ? fuel : 1,
+        };
+    }
+
+    return null;
+};
+
 const normalizeRoutePoints = (points) => {
     return (Array.isArray(points) ? points : []).map((point) => ({
         x: toNumber(point.x, 0),
@@ -858,17 +981,25 @@ const buildAdminDraft = (shop) => {
     if (!shop) return null;
     const creator = shop.metadata?.creator || {};
     const coords = creator.coords || shop.coords || { x: 0, y: 0, z: 0, w: shop.heading || 0 };
-    const availableVehicles = Object.keys(state.admin.config.deliveryVehicles || {});
     const pedSource = creator.ped || shop.config?.ped || {};
     const zoneSource = creator.zone || shop.config?.zone || {};
     const dropoffsSource = Array.isArray(creator.dropoffs) && creator.dropoffs.length
         ? creator.dropoffs
         : [{ x: coords.x ?? 0, y: coords.y ?? 0, z: coords.z ?? 0, label: shop.label || '' }];
     const depotsSource = Array.isArray(creator.depots) ? creator.depots : [];
-    const vehiclesSource = Array.isArray(creator.vehicles) && creator.vehicles.length
-        ? creator.vehicles
-        : availableVehicles;
+    const vehiclesSource = Array.isArray(creator.vehicles) ? creator.vehicles : [];
     const productsSource = Array.isArray(creator.products) ? creator.products : [];
+
+    const blipDisabled = creator.blip === false;
+    const blipSource = blipDisabled ? {} : (creator.blip || shop.config?.blip || {});
+    const blip = {
+        enabled: blipDisabled ? false : Boolean(blipSource && (blipSource.sprite || blipSource.color || blipSource.label || blipSource.scale)),
+        sprite: toNumber(blipSource.sprite, 59),
+        color: toNumber(blipSource.color, 1),
+        scale: Number.isFinite(blipSource.scale) ? Number(blipSource.scale) : 0.8,
+        label: blipSource.label || shop.label || '',
+        shortRange: blipSource.shortRange !== false,
+    };
 
     const vehicleSpawns = Array.isArray(creator.vehicleSpawns)
         ? creator.vehicleSpawns.map((point) => ({
@@ -879,6 +1010,15 @@ const buildAdminDraft = (shop) => {
             label: point.label || '',
         }))
         : [];
+
+    const vehicleDraft = [];
+    const seenVehicles = new Set();
+    vehiclesSource.forEach((entry) => {
+        const normalized = normalizeVehicleDraftEntry(entry);
+        if (!normalized || !normalized.key || seenVehicles.has(normalized.key)) return;
+        seenVehicles.add(normalized.key);
+        vehicleDraft.push(normalized);
+    });
 
     const routes = Array.isArray(creator.routes)
         ? creator.routes.map((route, index) => ({
@@ -926,7 +1066,9 @@ const buildAdminDraft = (shop) => {
         sellPrice: toNumber(shop.sellPrice ?? creator.sellPrice, 0),
         inventory: flattenInventory(shop.inventory),
         vehicleSpawns,
+        vehicles: vehicleDraft,
         routes,
+        blip,
         isNew: false,
     };
 };
@@ -969,6 +1111,14 @@ const buildNewAdminDraft = (type, coords) => {
             label: '',
         }],
         routes: [],
+        blip: {
+            enabled: false,
+            sprite: 59,
+            color: 1,
+            scale: 0.8,
+            label: '',
+            shortRange: true,
+        },
         isNew: true,
     };
 };
@@ -991,22 +1141,32 @@ const setAdminData = (payload) => {
     state.admin.shops = payload?.shops || [];
     state.admin.config = {
         shopTypes: payload?.shopTypes || {},
-        deliveryVehicles: payload?.deliveryVehicles || {},
+        vehicleTemplates: payload?.vehicleTemplates || payload?.deliveryVehicles || {},
         depots: payload?.depots || [],
     };
+    const previousSelection = state.admin.pendingSelection || state.admin.selected;
+    state.admin.pendingSelection = null;
+    if (previousSelection && state.admin.shops.some((shop) => shop.identifier === previousSelection)) {
+        state.admin.selected = previousSelection;
+    } else {
+        state.admin.selected = null;
+    }
     state.admin.createMode = false;
-    if (state.admin.pendingSelection) {
-        const match = state.admin.shops.find((shop) => shop.identifier === state.admin.pendingSelection);
-        if (match) {
-            state.admin.selected = match.identifier;
-        }
-        state.admin.pendingSelection = null;
-    }
-    if (!state.admin.selected || !state.admin.shops.some((shop) => shop.identifier === state.admin.selected)) {
-        state.admin.selected = state.admin.shops[0]?.identifier || null;
-    }
-    state.admin.draft = buildAdminDraft(getAdminSelectedShop());
     state.admin.dirty = false;
+
+    if (state.admin.view === 'editor') {
+        if (!state.admin.selected && state.admin.shops.length > 0) {
+            state.admin.selected = state.admin.shops[0].identifier;
+        }
+        const selectedShop = getAdminSelectedShop();
+        state.admin.draft = selectedShop ? buildAdminDraft(selectedShop) : null;
+        if (!state.admin.draft) {
+            state.admin.view = 'dashboard';
+        }
+    } else {
+        state.admin.draft = null;
+        state.admin.activeSection = 'general';
+    }
 };
 
 const updateAdminSaveButton = () => {
@@ -1071,7 +1231,9 @@ const renderAdminList = () => {
         const button = document.createElement('button');
         button.type = 'button';
         button.classList.add('admin-card');
-        if (!state.admin.createMode && shop.identifier === state.admin.selected) button.classList.add('active');
+        if (!state.admin.createMode && state.admin.view === 'editor' && shop.identifier === state.admin.selected) {
+            button.classList.add('active');
+        }
         button.dataset.action = 'select-shop';
         button.dataset.identifier = shop.identifier;
         button.innerHTML = `
@@ -1089,87 +1251,279 @@ const renderAdminList = () => {
     });
 };
 
+const renderAdminDashboard = (container) => {
+    const shops = state.admin.shops || [];
+    if (!shops.length) {
+        container.innerHTML = '<div class="admin-empty">Keine Shops vorhanden.</div>';
+        return;
+    }
+    const count = shops.length;
+    const cards = shops.map((shop) => {
+        const coords = shop.coords || {};
+        const x = toNumber(coords.x, 0);
+        const y = toNumber(coords.y, 0);
+        const location = Number.isFinite(x) && Number.isFinite(y)
+            ? `${x.toFixed(1)}, ${y.toFixed(1)}`
+            : '–';
+        return `
+            <div class="admin-dashboard__card">
+                <h4>${escapeHtml(shop.label || shop.identifier || 'Unbenannter Shop')}</h4>
+                <div class="meta">
+                    <span>ID: ${escapeHtml(shop.identifier || '–')}</span>
+                    <span>Typ: ${escapeHtml(shop.type || '–')}</span>
+                    <span>Besitzer: ${escapeHtml(shop.owner || 'Niemand')}</span>
+                    <span>Level: ${toNumber(shop.level, 1)}</span>
+                    <span>Saldo: ${currency(shop.balance || 0)}</span>
+                    <span>Standort: ${location}</span>
+                </div>
+                <div class="actions">
+                    <button class="btn secondary" data-action="select-shop" data-identifier="${escapeHtml(shop.identifier || '')}">Bearbeiten</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    container.innerHTML = `
+        <div class="admin-dashboard">
+            <div class="admin-dashboard__header">
+                <h3>Shop Übersicht</h3>
+                <div class="admin-dashboard__meta">${count} ${count === 1 ? 'Shop' : 'Shops'} konfiguriert</div>
+            </div>
+            <div class="admin-dashboard__grid">${cards}</div>
+        </div>
+    `;
+};
+
+const renderAdminSectionNav = (sections) => {
+    const nav = document.getElementById('admin-section-nav');
+    if (!nav) return;
+    if (!Array.isArray(sections) || sections.length === 0) {
+        nav.innerHTML = '';
+        nav.classList.add('hidden');
+        return;
+    }
+    if (!sections.some((section) => section.key === state.admin.activeSection)) {
+        state.admin.activeSection = sections[0].key;
+    }
+    nav.classList.remove('hidden');
+    nav.innerHTML = `
+        <span class="admin-section-nav__title">Bereiche</span>
+        <div class="admin-section-nav__list">
+            ${sections.map((section) => `
+                <button type="button"
+                    class="admin-section-nav__item ${state.admin.activeSection === section.key ? 'active' : ''}"
+                    data-action="admin-scroll-section"
+                    data-target="admin-section-${section.key}"
+                    data-section="${section.key}">
+                    ${escapeHtml(section.title)}
+                </button>
+            `).join('')}
+        </div>
+    `;
+};
+
 const renderAdminDetail = () => {
     const container = document.getElementById('admin-detail');
-    if (!container) return;
+    const nav = document.getElementById('admin-section-nav');
+    if (!container || !nav) return;
     container.innerHTML = '';
 
-    const draft = state.admin.draft;
-    if (!draft) {
-        container.innerHTML = '<div class="admin-empty">Bitte einen Shop auswählen.</div>';
+    if (state.admin.view !== 'editor' || !state.admin.draft) {
+        renderAdminDashboard(container);
+        renderAdminSectionNav([]);
         updateAdminSaveButton();
         return;
     }
 
-    const typeOptions = Object.entries(state.admin.config.shopTypes || {});
-    const vehicleOptions = Object.entries(state.admin.config.deliveryVehicles || {});
-    const activeType = state.admin.config.shopTypes[draft.type] || {};
-    const productOptions = Object.entries(activeType.baseProducts || {});
+    const draft = state.admin.draft;
+    const sections = [];
+    const addSection = (key, title, body) => {
+        sections.push({ key, title, body });
+    };
 
+    const typeOptions = Object.entries(state.admin.config.shopTypes || {});
     const typeOptionsHtml = (() => {
-        const entries = typeOptions.map(([key, type]) => `<option value="${key}" ${key === draft.type ? 'selected' : ''}>${type.label || key}</option>`);
+        const entries = typeOptions.map(([key, type]) => `<option value="${key}" ${key === draft.type ? 'selected' : ''}>${escapeHtml(type.label || key)}</option>`);
         if (draft.type && !typeOptions.some(([key]) => key === draft.type)) {
-            entries.push(`<option value="${draft.type}" selected>${draft.type}</option>`);
+            entries.push(`<option value="${escapeHtml(draft.type)}" selected>${escapeHtml(draft.type)}</option>`);
         }
         return entries.join('');
     })();
 
+    const identifierField = state.admin.createMode
+        ? `<label>Shop-ID<input type="text" data-field="identifier" value="${escapeHtml(draft.identifier || '')}" placeholder="z.B. legion247"></label>`
+        : `<div class="admin-readonly">ID: ${escapeHtml(draft.identifier)}</div>`;
+
+    addSection('general', 'Allgemein', `
+        ${identifierField}
+        <label>Shop-Name<input type="text" data-field="label" value="${escapeHtml(draft.label || '')}"></label>
+        <label>Shop-Typ
+            <select data-field="type">
+                ${typeOptionsHtml}
+            </select>
+        </label>
+        <div class="admin-grid">
+            <label>Kaufpreis<input type="number" step="1" data-field="purchasePrice" value="${toNumber(draft.purchasePrice, 0)}"></label>
+            <label>Verkaufspreis<input type="number" step="1" data-field="sellPrice" value="${toNumber(draft.sellPrice, 0)}"></label>
+        </div>
+    `);
+
+    addSection('location', 'Standort', `
+        <div class="admin-grid">
+            <label>X<input type="number" step="0.01" data-group="coords" data-key="x" value="${toNumber(draft.coords.x, 0)}"></label>
+            <label>Y<input type="number" step="0.01" data-group="coords" data-key="y" value="${toNumber(draft.coords.y, 0)}"></label>
+            <label>Z<input type="number" step="0.01" data-group="coords" data-key="z" value="${toNumber(draft.coords.z, 0)}"></label>
+            <label>Heading<input type="number" step="0.01" data-group="coords" data-key="heading" value="${toNumber(draft.coords.heading, 0)}"></label>
+        </div>
+        <button type="button" class="btn secondary" data-action="capture-coords">Aktuelle Position übernehmen</button>
+    `);
+
+    addSection('npc', 'NPC', `
+        <label>Modell<input type="text" data-group="ped" data-key="model" value="${escapeHtml(draft.ped.model || '')}"></label>
+        <label>Scenario<input type="text" data-group="ped" data-key="scenario" value="${escapeHtml(draft.ped.scenario || '')}"></label>
+    `);
+
+    addSection('zone', 'Zone', `
+        <div class="admin-grid">
+            <label>Länge<input type="number" step="0.01" data-group="zone" data-key="length" value="${toNumber(draft.zone.length, 2)}"></label>
+            <label>Breite<input type="number" step="0.01" data-group="zone" data-key="width" value="${toNumber(draft.zone.width, 2)}"></label>
+            <label>Min Z<input type="number" step="0.01" data-group="zone" data-key="minZ" value="${toNumber(draft.zone.minZ, 0)}"></label>
+            <label>Max Z<input type="number" step="0.01" data-group="zone" data-key="maxZ" value="${toNumber(draft.zone.maxZ, 0)}"></label>
+        </div>
+        <button type="button" class="btn secondary" data-action="capture-zone">Zone anpassen (Position)</button>
+    `);
+
+    const blip = draft.blip || {};
+    addSection('blip', 'Blip', `
+        <label class="admin-checkbox">
+            <input type="checkbox" data-group="blip" data-key="enabled" ${blip.enabled ? 'checked' : ''}>
+            <span>Blip aktivieren</span>
+        </label>
+        <div class="admin-grid">
+            <label>Sprite<input type="number" step="1" data-group="blip" data-key="sprite" value="${toNumber(blip.sprite, 59)}"></label>
+            <label>Farbe<input type="number" step="1" data-group="blip" data-key="color" value="${toNumber(blip.color, 1)}"></label>
+            <label>Skalierung<input type="number" step="0.01" data-group="blip" data-key="scale" value="${Number.isFinite(blip.scale) ? blip.scale : 0.8}"></label>
+        </div>
+        <label>Anzeige-Name<input type="text" data-group="blip" data-key="label" value="${escapeHtml(blip.label || '')}"></label>
+        <label class="admin-checkbox">
+            <input type="checkbox" data-group="blip" data-key="shortRange" ${blip.shortRange === false ? '' : 'checked'}>
+            <span>Nur in der Nähe anzeigen</span>
+        </label>
+    `);
+
     const dropoffRows = draft.dropoffs.map((point, index) => `
         <div class="admin-point-row" data-index="${index}">
-            <label>X<input type="number" step="0.01" data-group="dropoffs" data-index="${index}" data-key="x" value="${point.x}"></label>
-            <label>Y<input type="number" step="0.01" data-group="dropoffs" data-index="${index}" data-key="y" value="${point.y}"></label>
-            <label>Z<input type="number" step="0.01" data-group="dropoffs" data-index="${index}" data-key="z" value="${point.z}"></label>
-            <label>Label<input type="text" data-group="dropoffs" data-index="${index}" data-key="label" value="${point.label || ''}"></label>
+            <label>X<input type="number" step="0.01" data-group="dropoffs" data-index="${index}" data-key="x" value="${toNumber(point.x, 0)}"></label>
+            <label>Y<input type="number" step="0.01" data-group="dropoffs" data-index="${index}" data-key="y" value="${toNumber(point.y, 0)}"></label>
+            <label>Z<input type="number" step="0.01" data-group="dropoffs" data-index="${index}" data-key="z" value="${toNumber(point.z, 0)}"></label>
+            <label>Label<input type="text" data-group="dropoffs" data-index="${index}" data-key="label" value="${escapeHtml(point.label || '')}"></label>
             <div class="admin-point-row__actions">
                 <button type="button" class="btn ghost" data-action="capture-point" data-point-type="dropoffs" data-index="${index}">Position</button>
                 <button type="button" class="btn ghost" data-action="remove-dropoff" data-index="${index}">&times;</button>
             </div>
         </div>
     `).join('');
+    addSection('dropoffs', 'Lieferpunkte', `
+        <div class="admin-point-list">${dropoffRows || '<div class="admin-empty">Keine Lieferpunkte.</div>'}</div>
+        <div class="admin-section__actions">
+            <button type="button" class="btn secondary" data-action="add-dropoff">+ Punkt hinzufügen</button>
+            <button type="button" class="btn secondary" data-action="add-dropoff-current">+ Punkt (Position)</button>
+        </div>
+    `);
 
     const depotRows = draft.depots.map((point, index) => `
         <div class="admin-point-row" data-index="${index}">
-            <label>X<input type="number" step="0.01" data-group="depots" data-index="${index}" data-key="x" value="${point.x}"></label>
-            <label>Y<input type="number" step="0.01" data-group="depots" data-index="${index}" data-key="y" value="${point.y}"></label>
-            <label>Z<input type="number" step="0.01" data-group="depots" data-index="${index}" data-key="z" value="${point.z}"></label>
-            <label>Heading<input type="number" step="0.01" data-group="depots" data-index="${index}" data-key="heading" value="${point.heading ?? 0}"></label>
-            <label>Label<input type="text" data-group="depots" data-index="${index}" data-key="label" value="${point.label || ''}"></label>
+            <label>X<input type="number" step="0.01" data-group="depots" data-index="${index}" data-key="x" value="${toNumber(point.x, 0)}"></label>
+            <label>Y<input type="number" step="0.01" data-group="depots" data-index="${index}" data-key="y" value="${toNumber(point.y, 0)}"></label>
+            <label>Z<input type="number" step="0.01" data-group="depots" data-index="${index}" data-key="z" value="${toNumber(point.z, 0)}"></label>
+            <label>Heading<input type="number" step="0.01" data-group="depots" data-index="${index}" data-key="heading" value="${toNumber(point.heading, 0)}"></label>
+            <label>Label<input type="text" data-group="depots" data-index="${index}" data-key="label" value="${escapeHtml(point.label || '')}"></label>
             <div class="admin-point-row__actions">
                 <button type="button" class="btn ghost" data-action="capture-point" data-point-type="depots" data-index="${index}">Position</button>
                 <button type="button" class="btn ghost" data-action="remove-depot" data-index="${index}">&times;</button>
             </div>
         </div>
     `).join('');
+    addSection('depots', 'Depotpunkte', `
+        <div class="admin-point-list">${depotRows || '<div class="admin-empty">Keine Depotpunkte.</div>'}</div>
+        <div class="admin-section__actions">
+            <button type="button" class="btn secondary" data-action="add-depot">+ Depot hinzufügen</button>
+            <button type="button" class="btn secondary" data-action="add-depot-current">+ Depot (Position)</button>
+        </div>
+    `);
 
-    const vehicleKeys = new Set(vehicleOptions.map(([key]) => key));
-    const vehicleCheckboxes = vehicleOptions.map(([key, vehicle]) => {
-        const checked = draft.vehicles.includes(key);
-        return `
-            <label class="admin-checkbox">
-                <input type="checkbox" data-collection="vehicles" value="${key}" ${checked ? 'checked' : ''}>
-                <span>${vehicle.label || key}</span>
-            </label>
-        `;
-    });
-    draft.vehicles.forEach((key) => {
-        if (!vehicleKeys.has(key)) {
-            vehicleCheckboxes.push(`
-                <label class="admin-checkbox">
-                    <input type="checkbox" data-collection="vehicles" value="${key}" checked>
-                    <span>${key}</span>
-                </label>
-            `);
-        }
-    });
-    const vehicleCheckboxHtml = vehicleCheckboxes.join('');
+    const spawnRows = draft.vehicleSpawns.map((point, index) => `
+        <div class="admin-point-row" data-index="${index}">
+            <label>X<input type="number" step="0.01" data-group="vehicleSpawns" data-index="${index}" data-key="x" value="${toNumber(point.x, 0)}"></label>
+            <label>Y<input type="number" step="0.01" data-group="vehicleSpawns" data-index="${index}" data-key="y" value="${toNumber(point.y, 0)}"></label>
+            <label>Z<input type="number" step="0.01" data-group="vehicleSpawns" data-index="${index}" data-key="z" value="${toNumber(point.z, 0)}"></label>
+            <label>Heading<input type="number" step="0.01" data-group="vehicleSpawns" data-index="${index}" data-key="heading" value="${toNumber(point.heading, 0)}"></label>
+            <label>Label<input type="text" data-group="vehicleSpawns" data-index="${index}" data-key="label" value="${escapeHtml(point.label || '')}"></label>
+            <div class="admin-point-row__actions">
+                <button type="button" class="btn ghost" data-action="capture-point" data-point-type="vehicleSpawns" data-index="${index}">Position</button>
+                <button type="button" class="btn ghost" data-action="remove-vehicle-spawn" data-index="${index}">&times;</button>
+            </div>
+        </div>
+    `).join('');
+    addSection('vehicleSpawns', 'Fahrzeug-Spawns', `
+        <div class="admin-point-list">${spawnRows || '<div class="admin-empty">Keine Spawnpunkte.</div>'}</div>
+        <div class="admin-section\__actions">
+            <button type="button" class="btn secondary" data-action="add-vehicle-spawn">+ Spawn hinzufügen</button>
+            <button type="button" class="btn secondary" data-action="add-vehicle-spawn-current">+ Spawn (Position)</button>
+        </div>
+    `);
 
+    const templates = Object.entries(state.admin.config.vehicleTemplates || {});
+    const templateOptions = ['<option value="">Vorlage wählen</option>'].
+        concat(templates.map(([key, vehicle]) => `<option value="${escapeHtml(key)}">${escapeHtml(vehicle.label || vehicle.model || key)}</option>`)).join('');
+    const vehicleRows = (draft.vehicles || []).map((vehicle, index) => `
+        <tr data-index="${index}">
+            <td><input type="text" data-group="vehicles" data-index="${index}" data-key="key" value="${escapeHtml(vehicle.key || '')}"></td>
+            <td><input type="text" data-group="vehicles" data-index="${index}" data-key="label" value="${escapeHtml(vehicle.label || '')}"></td>
+            <td><input type="text" data-group="vehicles" data-index="${index}" data-key="model" value="${escapeHtml(vehicle.model || '')}"></td>
+            <td><input type="number" step="1" data-group="vehicles" data-index="${index}" data-key="price" value="${toNumber(vehicle.price, 0)}"></td>
+            <td><input type="number" step="1" data-group="vehicles" data-index="${index}" data-key="minLevel" value="${toNumber(vehicle.minLevel, 1)}"></td>
+            <td><input type="number" step="1" data-group="vehicles" data-index="${index}" data-key="capacity" value="${toNumber(vehicle.capacity, 0)}"></td>
+            <td><input type="number" step="1" data-group="vehicles" data-index="${index}" data-key="trunk" value="${toNumber(vehicle.trunk, 0)}"></td>
+            <td><input type="number" step="0.1" data-group="vehicles" data-index="${index}" data-key="fuelModifier" value="${Number(vehicle.fuelModifier || 1).toFixed(2)}"></td>
+            <td><button type="button" class="btn ghost" data-action="remove-vehicle" data-index="${index}">&times;</button></td>
+        </tr>
+    `).join('');
+    addSection('vehicles', 'Fahrzeuge', `
+        <div class="admin-vehicle-controls">
+            <select data-role="vehicle-template">${templateOptions}</select>
+            <button type="button" class="btn secondary" data-action="admin-add-vehicle-template">Vorlage übernehmen</button>
+            <button type="button" class="btn ghost" data-action="admin-add-vehicle-manual">Eigenes Fahrzeug</button>
+        </div>
+        <div class="admin-table-wrapper admin-vehicle-table">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Schlüssel</th>
+                        <th>Label</th>
+                        <th>Modell</th>
+                        <th>Preis</th>
+                        <th>Min. Level</th>
+                        <th>Kapazität</th>
+                        <th>Kofferraum</th>
+                        <th>Kraftstofffaktor</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${vehicleRows || '<tr><td colspan="9" class="admin-empty">Keine Fahrzeuge hinterlegt.</td></tr>'}
+                </tbody>
+            </table>
+        </div>
+    `);
+
+    const productOptions = Object.entries(activeType.baseProducts || {});
     const productKeys = new Set(productOptions.map(([key]) => key));
     const productCheckboxes = productOptions.map(([key, product]) => {
         const checked = draft.products.includes(key);
         return `
             <label class="admin-checkbox">
                 <input type="checkbox" data-collection="products" value="${key}" ${checked ? 'checked' : ''}>
-                <span>${product.label || key}</span>
+                <span>${escapeHtml(product.label || key)}</span>
             </label>
         `;
     });
@@ -1178,60 +1532,68 @@ const renderAdminDetail = () => {
             productCheckboxes.push(`
                 <label class="admin-checkbox">
                     <input type="checkbox" data-collection="products" value="${key}" checked>
-                    <span>${key}</span>
+                    <span>${escapeHtml(key)}</span>
                 </label>
             `);
         }
     });
-    const productCheckboxHtml = productCheckboxes.join('');
-
-    const vehicleSpawnRows = draft.vehicleSpawns.map((point, index) => `
-        <div class="admin-point-row" data-index="${index}">
-            <label>X<input type="number" step="0.01" data-group="vehicleSpawns" data-index="${index}" data-key="x" value="${point.x}"></label>
-            <label>Y<input type="number" step="0.01" data-group="vehicleSpawns" data-index="${index}" data-key="y" value="${point.y}"></label>
-            <label>Z<input type="number" step="0.01" data-group="vehicleSpawns" data-index="${index}" data-key="z" value="${point.z}"></label>
-            <label>Heading<input type="number" step="0.01" data-group="vehicleSpawns" data-index="${index}" data-key="heading" value="${point.heading ?? 0}"></label>
-            <label>Label<input type="text" data-group="vehicleSpawns" data-index="${index}" data-key="label" value="${point.label || ''}"></label>
-            <div class="admin-point-row__actions">
-                <button type="button" class="btn ghost" data-action="capture-point" data-point-type="vehicleSpawns" data-index="${index}">Position</button>
-                <button type="button" class="btn ghost" data-action="remove-vehicle-spawn" data-index="${index}">&times;</button>
-            </div>
-        </div>
-    `).join('');
-
     const inventoryRows = draft.inventory.map((item, index) => `
         <tr data-index="${index}">
-            <td><input type="text" data-group="inventory" data-index="${index}" data-key="label" value="${item.label || ''}"></td>
-            <td><input type="text" data-group="inventory" data-index="${index}" data-key="item" value="${item.item || ''}"></td>
-            <td><input type="text" data-group="inventory" data-index="${index}" data-key="category" value="${item.category || ''}"></td>
-            <td><input type="text" data-group="inventory" data-index="${index}" data-key="icon" value="${item.icon || ''}"></td>
-            <td><input type="number" step="1" data-group="inventory" data-index="${index}" data-key="quantity" value="${item.quantity}"></td>
-            <td><input type="number" step="0.01" data-group="inventory" data-index="${index}" data-key="basePrice" value="${item.basePrice}"></td>
-            <td><input type="number" step="0.01" data-group="inventory" data-index="${index}" data-key="overridePrice" value="${item.overridePrice}"></td>
-            <td><input type="number" step="1" data-group="inventory" data-index="${index}" data-key="minLevel" value="${item.minLevel}"></td>
-            <td><input type="number" step="1" data-group="inventory" data-index="${index}" data-key="discount" value="${item.discount}"></td>
+            <td><input type="text" data-group="inventory" data-index="${index}" data-key="label" value="${escapeHtml(item.label || '')}"></td>
+            <td><input type="text" data-group="inventory" data-index="${index}" data-key="item" value="${escapeHtml(item.item || '')}"></td>
+            <td><input type="text" data-group="inventory" data-index="${index}" data-key="category" value="${escapeHtml(item.category || '')}"></td>
+            <td><input type="text" data-group="inventory" data-index="${index}" data-key="icon" value="${escapeHtml(item.icon || '')}"></td>
+            <td><input type="number" step="1" data-group="inventory" data-index="${index}" data-key="quantity" value="${toNumber(item.quantity, 0)}"></td>
+            <td><input type="number" step="0.01" data-group="inventory" data-index="${index}" data-key="basePrice" value="${toNumber(item.basePrice, 0)}"></td>
+            <td><input type="number" step="0.01" data-group="inventory" data-index="${index}" data-key="overridePrice" value="${toNumber(item.overridePrice, 0)}"></td>
+            <td><input type="number" step="1" data-group="inventory" data-index="${index}" data-key="minLevel" value="${toNumber(item.minLevel, 1)}"></td>
+            <td><input type="number" step="1" data-group="inventory" data-index="${index}" data-key="discount" value="${toNumber(item.discount, 0)}"></td>
             <td><button type="button" class="btn ghost" data-action="remove-item" data-index="${index}">&times;</button></td>
         </tr>
     `).join('');
+    addSection('products', 'Produkte', `
+        <div class="admin-checkbox-grid">${productCheckboxes.join('') || '<div class="admin-empty">Keine Kategorien für diesen Typ.</div>'}</div>
+        <div class="admin-table-wrapper">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Label</th>
+                        <th>Item</th>
+                        <th>Kategorie</th>
+                        <th>Icon</th>
+                        <th>Menge</th>
+                        <th>Marktpreis</th>
+                        <th>Verkaufspreis</th>
+                        <th>Min. Level</th>
+                        <th>Rabatt %</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${inventoryRows || '<tr><td colspan="10" class="admin-empty">Keine Produkte gepflegt.</td></tr>'}
+                </tbody>
+            </table>
+        </div>
+        <button type="button" class="btn secondary" data-action="add-item">+ Produkt hinzufügen</button>
+    `);
 
     const routesHtml = draft.routes.map((route, routeIndex) => {
         const pointRows = route.points.map((point, pointIndex) => `
             <div class="admin-point-row" data-index="${pointIndex}">
-                <label>X<input type="number" step="0.01" data-group="route-point" data-route-index="${routeIndex}" data-point-index="${pointIndex}" data-key="x" value="${point.x}"></label>
-                <label>Y<input type="number" step="0.01" data-group="route-point" data-route-index="${routeIndex}" data-point-index="${pointIndex}" data-key="y" value="${point.y}"></label>
-                <label>Z<input type="number" step="0.01" data-group="route-point" data-route-index="${routeIndex}" data-point-index="${pointIndex}" data-key="z" value="${point.z}"></label>
-                <label>Label<input type="text" data-group="route-point" data-route-index="${routeIndex}" data-point-index="${pointIndex}" data-key="label" value="${point.label || ''}"></label>
+                <label>X<input type="number" step="0.01" data-group="route-point" data-route-index="${routeIndex}" data-point-index="${pointIndex}" data-key="x" value="${toNumber(point.x, 0)}"></label>
+                <label>Y<input type="number" step="0.01" data-group="route-point" data-route-index="${routeIndex}" data-point-index="${pointIndex}" data-key="y" value="${toNumber(point.y, 0)}"></label>
+                <label>Z<input type="number" step="0.01" data-group="route-point" data-route-index="${routeIndex}" data-point-index="${pointIndex}" data-key="z" value="${toNumber(point.z, 0)}"></label>
+                <label>Label<input type="text" data-group="route-point" data-route-index="${routeIndex}" data-point-index="${pointIndex}" data-key="label" value="${escapeHtml(point.label || '')}"></label>
                 <div class="admin-point-row__actions">
                     <button type="button" class="btn ghost" data-action="capture-point" data-point-type="route" data-route-index="${routeIndex}" data-point-index="${pointIndex}">Position</button>
                     <button type="button" class="btn ghost" data-action="remove-route-point" data-route-index="${routeIndex}" data-point-index="${pointIndex}">&times;</button>
                 </div>
             </div>
         `).join('');
-
         return `
             <div class="admin-route" data-route-index="${routeIndex}">
                 <div class="admin-route__header">
-                    <label>Routenname<input type="text" data-group="routes" data-index="${routeIndex}" data-key="label" value="${route.label || ''}"></label>
+                    <label>Routenname<input type="text" data-group="routes" data-index="${routeIndex}" data-key="label" value="${escapeHtml(route.label || '')}"></label>
                     <button type="button" class="btn ghost" data-action="remove-route" data-index="${routeIndex}">&times;</button>
                 </div>
                 <div class="admin-point-list">${pointRows || '<div class="admin-empty">Keine Wegpunkte.</div>'}</div>
@@ -1242,122 +1604,30 @@ const renderAdminDetail = () => {
             </div>
         `;
     }).join('');
-
-    const identifierField = state.admin.createMode
-        ? `<label>Shop-ID<input type="text" data-field="identifier" value="${draft.identifier || ''}" placeholder="z.B. legion247"></label>`
-        : `<div class="admin-readonly">ID: ${draft.identifier}</div>`;
+    addSection('routes', 'Liefer-Routen', `
+        <div class="admin-route-list">${routesHtml || '<div class="admin-empty">Keine Routen definiert.</div>'}</div>
+        <button type="button" class="btn secondary" data-action="add-route">+ Route hinzufügen</button>
+    `);
 
     container.innerHTML = `
         <div class="admin-form">
-            <section class="admin-section">
-                <h3>Allgemein</h3>
-                ${identifierField}
-                <label>Shop-Name<input type="text" data-field="label" value="${draft.label}"></label>
-                <label>Shop-Typ
-                    <select data-field="type">
-                        ${typeOptionsHtml}
-                    </select>
-                </label>
-                <div class="admin-grid">
-                    <label>Kaufpreis<input type="number" step="1" data-field="purchasePrice" value="${draft.purchasePrice}"></label>
-                    <label>Verkaufspreis<input type="number" step="1" data-field="sellPrice" value="${draft.sellPrice}"></label>
-                </div>
-            </section>
-            <section class="admin-section">
-                <h3>Standort</h3>
-                <div class="admin-grid">
-                    <label>X<input type="number" step="0.01" data-group="coords" data-key="x" value="${draft.coords.x}"></label>
-                    <label>Y<input type="number" step="0.01" data-group="coords" data-key="y" value="${draft.coords.y}"></label>
-                    <label>Z<input type="number" step="0.01" data-group="coords" data-key="z" value="${draft.coords.z}"></label>
-                    <label>Heading<input type="number" step="0.01" data-group="coords" data-key="heading" value="${draft.coords.heading}"></label>
-                </div>
-                <button type="button" class="btn secondary" data-action="capture-coords">Aktuelle Position übernehmen</button>
-            </section>
-            <section class="admin-section">
-                <h3>NPC</h3>
-                <label>Modell<input type="text" data-group="ped" data-key="model" value="${draft.ped.model || ''}"></label>
-                <label>Scenario<input type="text" data-group="ped" data-key="scenario" value="${draft.ped.scenario || ''}"></label>
-            </section>
-            <section class="admin-section">
-                <h3>Zone</h3>
-                <div class="admin-grid">
-                    <label>Länge<input type="number" step="0.01" data-group="zone" data-key="length" value="${draft.zone.length}"></label>
-                    <label>Breite<input type="number" step="0.01" data-group="zone" data-key="width" value="${draft.zone.width}"></label>
-                    <label>Min Z<input type="number" step="0.01" data-group="zone" data-key="minZ" value="${draft.zone.minZ}"></label>
-                    <label>Max Z<input type="number" step="0.01" data-group="zone" data-key="maxZ" value="${draft.zone.maxZ}"></label>
-                </div>
-                <button type="button" class="btn secondary" data-action="capture-zone">Zone anpassen (Position)</button>
-            </section>
-            <section class="admin-section">
-                <h3>Lieferpunkte</h3>
-                <div class="admin-point-list">${dropoffRows || '<div class="admin-empty">Keine Lieferpunkte.</div>'}</div>
-                <div class="admin-section__actions">
-                    <button type="button" class="btn secondary" data-action="add-dropoff">+ Punkt hinzufügen</button>
-                    <button type="button" class="btn secondary" data-action="add-dropoff-current">+ Punkt (Position)</button>
-                </div>
-            </section>
-            <section class="admin-section">
-                <h3>Depotpunkte</h3>
-                <div class="admin-point-list">${depotRows || '<div class="admin-empty">Keine Depotpunkte.</div>'}</div>
-                <div class="admin-section__actions">
-                    <button type="button" class="btn secondary" data-action="add-depot">+ Depot hinzufügen</button>
-                    <button type="button" class="btn secondary" data-action="add-depot-current">+ Depot (Position)</button>
-                </div>
-            </section>
-            <section class="admin-section">
-                <h3>Fahrzeug-Spawns</h3>
-                <div class="admin-point-list">${vehicleSpawnRows || '<div class="admin-empty">Keine Spawnpunkte.</div>'}</div>
-                <div class="admin-section__actions">
-                    <button type="button" class="btn secondary" data-action="add-vehicle-spawn">+ Spawn hinzufügen</button>
-                    <button type="button" class="btn secondary" data-action="add-vehicle-spawn-current">+ Spawn (Position)</button>
-                </div>
-            </section>
-            <section class="admin-section">
-                <h3>Fahrzeuge</h3>
-                <div class="admin-checkbox-grid">${vehicleCheckboxHtml || '<div class="admin-empty">Keine Fahrzeuge konfiguriert.</div>'}</div>
-            </section>
-            <section class="admin-section">
-                <h3>Produktkategorien</h3>
-                <div class="admin-checkbox-grid">${productCheckboxHtml || '<div class="admin-empty">Keine Kategorien für diesen Typ.</div>'}</div>
-            </section>
-            <section class="admin-section">
-                <h3>Produkte</h3>
-                <div class="admin-table-wrapper">
-                    <table class="admin-table">
-                        <thead>
-                            <tr>
-                                <th>Label</th>
-                                <th>Item</th>
-                                <th>Kategorie</th>
-                                <th>Icon</th>
-                                <th>Menge</th>
-                                <th>Marktpreis</th>
-                                <th>Verkaufspreis</th>
-                                <th>Min. Level</th>
-                                <th>Rabatt %</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${inventoryRows || '<tr><td colspan="10" class="admin-empty">Keine Produkte gepflegt.</td></tr>'}
-                        </tbody>
-                    </table>
-                </div>
-                <button type="button" class="btn secondary" data-action="add-item">+ Produkt hinzufügen</button>
-            </section>
-            <section class="admin-section">
-                <h3>Liefer-Routen</h3>
-                <div class="admin-route-list">${routesHtml || '<div class="admin-empty">Keine Routen definiert.</div>'}</div>
-                <button type="button" class="btn secondary" data-action="add-route">+ Route hinzufügen</button>
-            </section>
+            ${sections.map((section) => `
+                <section id="admin-section-${section.key}" class="admin-section">
+                    <h3>${escapeHtml(section.title)}</h3>
+                    ${section.body}
+                </section>
+            `).join('')}
         </div>
     `;
 
+    renderAdminSectionNav(sections);
     updateAdminSaveButton();
 };
 
 const selectAdminShop = (identifier) => {
     if (!identifier) return;
+    state.admin.view = 'editor';
+    state.admin.activeSection = 'general';
     state.admin.createMode = false;
     if (identifier === state.admin.selected) {
         state.admin.draft = buildAdminDraft(getAdminSelectedShop());
@@ -1478,6 +1748,53 @@ const removeVehicleSpawn = (index) => {
     renderAdminDetail();
 };
 
+const addVehicleFromTemplate = (key) => {
+    if (!state.admin.draft || !key) return;
+    const templates = state.admin.config.vehicleTemplates || {};
+    const template = templates[key];
+    if (!template) {
+        showNotification('Keine Fahrzeugvorlage gefunden.', 'error', 3000);
+        return;
+    }
+    state.admin.draft.vehicles = Array.isArray(state.admin.draft.vehicles) ? state.admin.draft.vehicles : [];
+    if (state.admin.draft.vehicles.some((vehicle) => vehicle.key === key)) {
+        showNotification('Fahrzeug ist bereits hinterlegt.', 'warning', 2500);
+        return;
+    }
+    const normalized = normalizeVehicleDraftEntry({ ...template, key });
+    if (!normalized) {
+        showNotification('Fahrzeugdaten konnten nicht übernommen werden.', 'error', 3000);
+        return;
+    }
+    state.admin.draft.vehicles.push(normalized);
+    markAdminDirty();
+    renderAdminDetail();
+};
+
+const addManualVehicle = () => {
+    if (!state.admin.draft) return;
+    state.admin.draft.vehicles = Array.isArray(state.admin.draft.vehicles) ? state.admin.draft.vehicles : [];
+    state.admin.draft.vehicles.push({
+        key: '',
+        label: '',
+        model: '',
+        price: 0,
+        minLevel: 1,
+        capacity: 0,
+        trunk: 0,
+        fuelModifier: 1,
+    });
+    markAdminDirty();
+    renderAdminDetail();
+};
+
+const removeVehicle = (index) => {
+    if (!state.admin.draft || !Array.isArray(state.admin.draft.vehicles)) return;
+    state.admin.draft.vehicles.splice(index, 1);
+    markAdminDirty();
+    renderAdminDetail();
+};
+
 const addRoute = (coords) => {
     if (!state.admin.draft) return;
     state.admin.draft.routes = Array.isArray(state.admin.draft.routes) ? state.admin.draft.routes : [];
@@ -1574,6 +1891,41 @@ const handleAdminInput = (event) => {
         const route = state.admin.draft.routes[routeIndex];
         if (!route || !route.points || !route.points[pointIndex]) return;
         route.points[pointIndex][key] = value;
+    } else if (group === 'vehicles') {
+        const index = Number(target.dataset.index);
+        if (!Number.isInteger(index) || !state.admin.draft.vehicles?.[index]) return;
+        const vehicle = state.admin.draft.vehicles[index];
+        if (target.type === 'checkbox') {
+            vehicle[key] = target.checked;
+        } else if (['price', 'minLevel', 'capacity', 'trunk'].includes(key)) {
+            vehicle[key] = toNumber(value, 0);
+        } else if (key === 'fuelModifier') {
+            const modifier = parseFloat(target.value);
+            vehicle.fuelModifier = Number.isFinite(modifier) && modifier > 0 ? modifier : 1;
+        } else {
+            vehicle[key] = target.value;
+        }
+    } else if (group === 'blip') {
+        state.admin.draft.blip = state.admin.draft.blip || {
+            enabled: false,
+            sprite: 59,
+            color: 1,
+            scale: 0.8,
+            label: '',
+            shortRange: true,
+        };
+        if (key === 'enabled' || key === 'shortRange') {
+            state.admin.draft.blip[key] = target.checked;
+        } else if (key === 'scale') {
+            const scale = parseFloat(target.value);
+            state.admin.draft.blip.scale = Number.isFinite(scale) ? scale : 0.8;
+        } else if (key === 'sprite' || key === 'color') {
+            state.admin.draft.blip[key] = toNumber(target.value, key === 'sprite' ? 59 : 1);
+        } else if (key === 'label') {
+            state.admin.draft.blip.label = target.value;
+        } else {
+            state.admin.draft.blip[key] = value;
+        }
     }
     markAdminDirty();
 };
@@ -1605,6 +1957,7 @@ const handleAdminChange = (event) => {
         if (field === 'type') {
             state.admin.draft.type = target.value;
             state.admin.draft.products = [];
+            state.admin.activeSection = 'general';
             markAdminDirty();
             renderAdminDetail();
         } else {
@@ -1623,6 +1976,8 @@ const startAdminCreateFlow = async () => {
     const coords = await fetchCurrentPosition();
     const baseType = state.admin.draft?.type || Object.keys(state.admin.config.shopTypes || {})[0] || '';
     state.admin.draft = buildNewAdminDraft(baseType, coords || state.admin.draft?.coords || {});
+    state.admin.view = 'editor';
+    state.admin.activeSection = 'general';
     state.admin.createMode = true;
     state.admin.dirty = true;
     state.admin.pendingSelection = null;
@@ -1636,8 +1991,11 @@ const cancelAdminCreate = () => {
     state.admin.createMode = false;
     state.admin.pendingSelection = null;
     if (state.admin.selected) {
+        state.admin.view = 'editor';
+        state.admin.activeSection = 'general';
         state.admin.draft = buildAdminDraft(getAdminSelectedShop());
     } else {
+        state.admin.view = 'dashboard';
         state.admin.draft = null;
     }
     state.admin.dirty = false;
@@ -1664,6 +2022,15 @@ const handleAdminClick = async (event) => {
             renderAdminDetail();
             updateAdminActionButtons();
         }
+    } else if (action === 'admin-show-dashboard') {
+        state.admin.view = 'dashboard';
+        state.admin.createMode = false;
+        state.admin.draft = null;
+        state.admin.dirty = false;
+        renderAdminList();
+        renderAdminDetail();
+        updateAdminActionButtons();
+        updateAdminSaveButton();
     } else if (action === 'admin-start-create') {
         await startAdminCreateFlow();
     } else if (action === 'admin-cancel-create') {
@@ -1717,6 +2084,36 @@ const handleAdminClick = async (event) => {
         const pointIndex = Number(el.dataset.pointIndex);
         if (Number.isInteger(routeIndex) && Number.isInteger(pointIndex)) {
             removeRoutePoint(routeIndex, pointIndex);
+        }
+    } else if (action === 'admin-add-vehicle-template') {
+        const select = document.querySelector('[data-role="vehicle-template"]');
+        const templateKey = select?.value?.trim();
+        if (templateKey) {
+            addVehicleFromTemplate(templateKey);
+            select.value = '';
+        }
+    } else if (action === 'admin-add-vehicle-manual') {
+        addManualVehicle();
+    } else if (action === 'remove-vehicle') {
+        const index = Number(el.dataset.index);
+        if (Number.isInteger(index)) removeVehicle(index);
+    } else if (action === 'admin-scroll-section') {
+        const sectionKey = el.dataset.section;
+        const targetId = el.dataset.target;
+        if (sectionKey) {
+            state.admin.activeSection = sectionKey;
+            const nav = document.getElementById('admin-section-nav');
+            if (nav) {
+                nav.querySelectorAll('[data-section]').forEach((button) => {
+                    button.classList.toggle('active', button.dataset.section === sectionKey);
+                });
+            }
+        }
+        if (targetId) {
+            const section = document.getElementById(targetId);
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         }
     } else if (action === 'capture-coords') {
         const coords = await fetchCurrentPosition();
@@ -1781,6 +2178,11 @@ const handleAdminClick = async (event) => {
             state.admin.pendingSelection = null;
             state.admin.dirty = true;
             updateAdminSaveButton();
+            if (result && result.message) {
+                showNotification(result.message, 'error', 4000);
+            } else {
+                showNotification('Shop konnte nicht gespeichert werden.', 'error', 4000);
+            }
             return;
         }
         state.admin.dirty = false;
@@ -1790,6 +2192,7 @@ const handleAdminClick = async (event) => {
             renderAdminDetail();
             updateAdminActionButtons();
         }
+        showNotification('Shop erfolgreich gespeichert.', 'success', 2500);
         updateAdminSaveButton();
     } else if (action === 'admin-reset') {
         if (state.admin.createMode) {
@@ -1797,6 +2200,12 @@ const handleAdminClick = async (event) => {
         } else {
             state.admin.draft = buildAdminDraft(getAdminSelectedShop());
             state.admin.dirty = false;
+            if (state.admin.draft) {
+                state.admin.view = 'editor';
+                state.admin.activeSection = 'general';
+            } else {
+                state.admin.view = 'dashboard';
+            }
             renderAdminDetail();
             updateAdminSaveButton();
         }
@@ -1893,6 +2302,7 @@ const render = () => {
     renderAdminDetail();
     updateAdminActionButtons();
     toggleView(state.view);
+    renderNotifications();
 };
 
 const addToCart = (itemId) => {
@@ -2102,6 +2512,16 @@ const bindEvents = () => {
             }
         });
     }
+
+    const notificationsEl = document.getElementById('notifications');
+    if (notificationsEl) {
+        notificationsEl.addEventListener('click', (event) => {
+            const close = event.target.closest('[data-action="notification-close"]');
+            if (!close) return;
+            const id = close.dataset.id;
+            removeNotification(id);
+        });
+    }
 };
 
 window.addEventListener('message', (event) => {
@@ -2132,6 +2552,8 @@ window.addEventListener('message', (event) => {
         case 'openAdminOverview':
             state.visible = true;
             state.view = 'admin';
+            state.admin.view = 'dashboard';
+            state.admin.activeSection = 'general';
             setAdminData(data || {});
             state.meta = { isAdmin: true };
             render();
@@ -2141,7 +2563,9 @@ window.addEventListener('message', (event) => {
             state.shop = null;
             state.cart = [];
             state.meta = {};
+            state.notifications = [];
             render();
+            renderNotifications();
             break;
         case 'refreshShop': {
             const previousShop = state.shop;
@@ -2160,6 +2584,9 @@ window.addEventListener('message', (event) => {
                     renderManagementPanel();
                 }
             }
+            break;
+        case 'notify':
+            showNotification(data.message, data.type || 'info', data.duration || 5000);
             break;
         default:
             break;

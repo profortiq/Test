@@ -40,9 +40,13 @@ Stelle sicher, dass alle Ressourcen aktuell sind und **vor** `ws-shopsystem` in 
 
 ## Admin-Creator & Shopverwaltung
 
-- Öffne das Creator-Panel mit `/shopadmin` (oder der in `config.lua` definierten Taste). Die linke Spalte listet alle Shops, über
-  „Neuer Shop“ wird der aktuelle Standort übernommen. Ped, Zone, Liefer- und Depotpunkte sowie Fahrzeug-Spawns lassen sich direkt
-  erfassen – Koordinaten werden auf Wunsch per „Position“-Button vom eigenen Charakter übernommen.
+- Öffne das Creator-Panel mit `/shopadmin` (oder der in `config.lua` definierten Taste). Du landest zunächst auf einem Dashboard,
+  das alle Shops inklusive Level, Kontostand, Typ und Koordinaten anzeigt. Von dort oder über die Shop-Liste links gelangst du in den Editor.
+- Im Editor findest du rechts eine Abschnitts-Navigation. Damit springst du ohne Scrollen zu Allgemein, Standort, NPC, Blip, Lieferpunkten,
+  Depots, Fahrzeug-Spawns, Fahrzeugverwaltung, Produktkategorien und Routen.
+- Ped, Zone, Liefer- und Depotpunkte sowie Fahrzeug-Spawns lassen sich direkt erfassen – Koordinaten werden auf Wunsch per
+  „Position“-Button vom eigenen Charakter übernommen. Der integrierte Blip-Creator unterstützt Sprite, Farbe, Skalierung, Label und
+  Short-Range-Einstellung pro Shop.
 - Jeder Shop besitzt eine eigene Fahrzeugverwaltung. Modelle, Labels, Preise, Mindestlevel, Kapazitäten, Kofferraumgrößen und
   Spritfaktoren werden vollständig über das UI gepflegt und landen nach dem Speichern automatisch in `ws_shop_allowed_vehicles`.
   Die alte Tabelle `WSShopConfig.DeliveryVehicles` entfällt damit komplett.
@@ -69,6 +73,7 @@ Alle Einstellungen findest du in `config.lua`. Wichtige Bereiche:
 - **Shop-Liste (`WSShopConfig.Shops`)**: Wird bewusst leer gelassen. Neue Shops werden vollständig über das Admin-Panel erstellt und landen direkt in der Datenbank.
 - **Depots (`WSShopConfig.Depots`)**: Optionale globale Vorschläge für Depots, falls der Creator keine individuellen Punkte setzt. Fahrzeuge werden ausschließlich im Admin-Panel gepflegt und landen mitsamt Preis-, Level- und Kapazitätsangaben direkt in der Datenbank.
 - **Benachrichtigungen (`WSShopConfig.Notifications`)**: Mail-Texte, Webhook-Einstellungen.
+- **UI-Notifications**: Das Panel blendet wichtige Ereignisse unten mittig ein (Erfolg, Fehler, Warnungen). Diese Hinweise erscheinen zusätzlich zu den klassischen QB-Notifications.
 
 > **Hinweis:** Alle Umlaute wurden als ASCII (z. B. `ae`, `oe`) hinterlegt, damit selbst bei ANSI-Encoding keine Probleme auftreten. Passe Texte nach Bedarf an.
 
