@@ -2,58 +2,46 @@ local Config = WSShopConfig
 local Utils = WSShops.Utils
 local QBCore = exports['qb-core']:GetCoreObject()
 
-local function BuildAdminPayloadSafe()
-    if not WSShops.BuildAdminPayload then return {} end
+local function buildAdminPayloadSafe()
+    if not WSShops.BuildAdminPayload then
+        return nil, 'missing_builder'
+    end
+
     local ok, payload = pcall(WSShops.BuildAdminPayload)
     if not ok then
         Utils.Debug('Failed to build admin payload: %s', payload)
         return nil, payload
     end
 
-local function OpenAdminPanel(src, opts)
-    opts = opts or {}
-    if not src or src <= 0 then return false, 'invalid_source' end
-
-    if not (WSShops.PlayerIsAdmin and WSShops.PlayerIsAdmin(src)) then
-        if not opts.silent then
-            Utils.Notify(src, Utils.Locale('error.role_not_allowed'), 'error')
-        end
-        return false, 'unauthorised'
-    end
-
-    local payload, err = BuildAdminPayloadSafe()
-    if not payload then
-        Utils.Notify(src, Utils.Locale('error.admin_payload_failed'), 'error')
-        return false, err or 'payload'
-    end
-
-    TriggerClientEvent('ws-shopsystem:client:openAdminOverview', src, payload)
-    return true
+    return payload
 end
 
-local function OpenAdminPanel(src, opts)
-    opts = opts or {}
-    if not src or src <= 0 then return false, nil, 'invalid_source' end
+local function openAdminPanel(source, options)
+    options = options or {}
 
-    if not (WSShops.PlayerIsAdmin and WSShops.PlayerIsAdmin(src)) then
+    if not source or source <= 0 then
+        return false, nil, 'invalid_source'
+    end
+
+    if not WSShops.PlayerIsAdmin or not WSShops.PlayerIsAdmin(source) then
         local message = Utils.Locale('error.role_not_allowed')
-        if not opts.silent then
-            Utils.Notify(src, message, 'error')
+        if not options.silent then
+            Utils.Notify(source, message, 'error')
         end
         return false, nil, message
     end
 
-    local payload = BuildAdminPayloadSafe()
+    local payload, errorMessage = buildAdminPayloadSafe()
     if not payload then
-        local message = Utils.Locale('error.admin_payload_failed')
-        if not opts.silent then
-            Utils.Notify(src, message, 'error')
+        local message = errorMessage or Utils.Locale('error.admin_payload_failed')
+        if not options.silent then
+            Utils.Notify(source, message, 'error')
         end
         return false, nil, message
     end
 
-    if not opts.skipTrigger then
-        TriggerClientEvent('ws-shopsystem:client:openAdminOverview', src, payload)
+    if not options.skipTrigger then
+        TriggerClientEvent('ws-shopsystem:client:openAdminOverview', source, payload)
     end
 
     return true, payload
@@ -71,11 +59,11 @@ RegisterNetEvent('ws-shopsystem:server:openAdminPanel', function()
 end)
 
 exports('OpenAdminPanel', function(target)
-    return OpenAdminPanel(target, { silent = true })
+    return openAdminPanel(target, { silent = true })
 end)
 
 QBCore.Functions.CreateCallback('ws-shopsystem:server:adminOpen', function(source, cb)
-    local success, payload, message = OpenAdminPanel(source, { silent = true, skipTrigger = true })
+    local success, payload, message = openAdminPanel(source, { silent = true, skipTrigger = true })
     if not success then
         cb({ success = false, message = message })
         return
