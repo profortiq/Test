@@ -9,7 +9,26 @@ local function BuildAdminPayloadSafe()
         Utils.Debug('Failed to build admin payload: %s', payload)
         return nil, payload
     end
-    return payload
+
+local function OpenAdminPanel(src, opts)
+    opts = opts or {}
+    if not src or src <= 0 then return false, 'invalid_source' end
+
+    if not (WSShops.PlayerIsAdmin and WSShops.PlayerIsAdmin(src)) then
+        if not opts.silent then
+            Utils.Notify(src, Utils.Locale('error.role_not_allowed'), 'error')
+        end
+        return false, 'unauthorised'
+    end
+
+    local payload, err = BuildAdminPayloadSafe()
+    if not payload then
+        Utils.Notify(src, Utils.Locale('error.admin_payload_failed'), 'error')
+        return false, err or 'payload'
+    end
+
+    TriggerClientEvent('ws-shopsystem:client:openAdminOverview', src, payload)
+    return true
 end
 
 local function OpenAdminPanel(src, opts)
