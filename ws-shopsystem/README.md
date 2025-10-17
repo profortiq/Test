@@ -115,6 +115,8 @@ Alle Einstellungen findest du in `config.lua`. Wichtige Bereiche:
 |------------------|---------------------------------------|---------------------------|
 | `/shopadmin`     | Admin-Übersicht aller Shops öffnen    | Laut `WSShopConfig.AdminAccess` |
 
+- Der Chat-Befehl ruft intern den Callback `ws-shopsystem:server:adminOpen` auf. Eigene Ressourcen können denselben Callback nutzen, um die aktuelle Creator-Payload inkl. Fehlermeldung bei fehlenden Rechten zu erhalten.
+
 Weitere Aktionen laufen über den NUI-Workflow oder `qb-target` (Interaktionen am Shop).
 
 ---

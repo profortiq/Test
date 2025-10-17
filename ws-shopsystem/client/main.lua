@@ -24,6 +24,13 @@ local function Sanitize(value)
     return value
 end
 
+local function Translate(key, ...)
+    if type(Locale) == 'function' then
+        return Locale(key, ...)
+    end
+    return key
+end
+
 local function PrepareShop(shop)
     if not shop then return nil end
     local sanitized = Sanitize(shop)
@@ -94,7 +101,7 @@ RegisterNetEvent('ws-shopsystem:client:openManagement', function(shop, meta)
     })
 end)
 
-RegisterNetEvent('ws-shopsystem:client:openAdminOverview', function(payload)
+local function OpenAdminPanel(payload)
     SetNuiFocus(true, true)
     SendNUIMessage({
         action = 'openAdminOverview',
@@ -104,6 +111,10 @@ RegisterNetEvent('ws-shopsystem:client:openAdminOverview', function(payload)
         deliveryVehicles = payload and payload.deliveryVehicles or {},
         depots = payload and payload.depots or {},
     })
+end
+
+RegisterNetEvent('ws-shopsystem:client:openAdminOverview', function(payload)
+    OpenAdminPanel(payload)
 end)
 
 RegisterNetEvent('ws-shopsystem:client:nuiNotify', function(message, nType, duration)
@@ -324,9 +335,25 @@ local function removeAdminSuggestion()
     TriggerEvent('chat:removeSuggestion', '/' .. adminCommand)
 end
 
+local function RequestAdminPanel()
+    QBCore.Functions.TriggerCallback('ws-shopsystem:server:adminOpen', function(result)
+        if not result or not result.success then
+            local message = (result and result.message) or Translate('error.admin_payload_failed')
+            QBCore.Functions.Notify(message or 'Fehler beim Öffnen des Admin-Panels', 'error')
+            return
+        end
+
+        OpenAdminPanel(result.payload or {})
+    end)
+end
+
 RegisterCommand(adminCommand, function()
-    TriggerServerEvent('ws-shopsystem:server:openAdminPanel')
+    RequestAdminPanel()
 end, false)
+
+RegisterNetEvent('ws-shopsystem:client:requestAdminPanel', function()
+    RequestAdminPanel()
+end)
 
 CreateThread(function()
     Wait(1000)
