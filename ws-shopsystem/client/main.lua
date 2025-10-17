@@ -97,7 +97,20 @@ RegisterNetEvent('ws-shopsystem:client:openAdminOverview', function(payload)
     SetNuiFocus(true, true)
     SendNUIMessage({
         action = 'openAdminOverview',
-        shops = payload,
+        shops = payload and payload.shops or {},
+        shopTypes = payload and payload.shopTypes or {},
+        vehicleTemplates = payload and payload.vehicleTemplates or payload and payload.deliveryVehicles or {},
+        deliveryVehicles = payload and payload.deliveryVehicles or {},
+        depots = payload and payload.depots or {},
+    })
+end)
+
+RegisterNetEvent('ws-shopsystem:client:nuiNotify', function(message, nType, duration)
+    SendNUIMessage({
+        action = 'notify',
+        message = message,
+        type = nType,
+        duration = duration,
     })
 end)
 
@@ -265,6 +278,26 @@ end)
 RegisterNUICallback('adminClose', function(_, cb)
     CloseUI()
     cb('ok')
+end)
+
+RegisterNUICallback('adminSaveShop', function(data, cb)
+    QBCore.Functions.TriggerCallback('ws-shopsystem:server:adminSaveShop', function(result)
+        cb(result or { success = false })
+    end, data)
+end)
+
+RegisterNUICallback('adminGetPlayerCoords', function(_, cb)
+    local ped = PlayerPedId()
+    local coords = GetEntityCoords(ped)
+    local heading = GetEntityHeading(ped)
+    cb({
+        coords = {
+            x = coords.x,
+            y = coords.y,
+            z = coords.z,
+            heading = heading,
+        }
+    })
 end)
 
 RegisterCommand('ws-shop-close', function()
