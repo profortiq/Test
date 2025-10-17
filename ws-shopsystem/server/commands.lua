@@ -9,8 +9,6 @@ local function BuildAdminPayloadSafe()
         Utils.Debug('Failed to build admin payload: %s', payload)
         return nil, payload
     end
-    return payload
-end
 
 local function OpenAdminPanel(src, opts)
     opts = opts or {}
