@@ -1516,6 +1516,7 @@ const renderAdminDetail = () => {
         </div>
     `);
 
+    const activeType = (state.admin.config.shopTypes || {})[draft.type] || {};
     const productOptions = Object.entries(activeType.baseProducts || {});
     const productKeys = new Set(productOptions.map(([key]) => key));
     const productCheckboxes = productOptions.map(([key, product]) => {
