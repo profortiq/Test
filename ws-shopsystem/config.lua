@@ -29,6 +29,16 @@ WSShopConfig = {
     StatHistoryDays = 30,
     OfflineWagePayout = true,
     AutoTerminateInactiveDays = 14,
+    AdminAccess = {
+        QBPermissions = { 'god', 'admin' }, -- qb-core permission groups that may open the creator
+        AceGroups = {}, -- optional ace groups (e.g. 'command') allowed to use the creator
+        Identifiers = {
+            -- add entries like 'license:1234567890abcdef' or 'discord:123456789012345678'
+        },
+        CitizenIds = {
+            -- add citizen IDs like 'ABC12345' for permanent creator access
+        },
+    },
     ManagerMenuAccessRoles = { 'manager', 'owner' },
     FinanceAccessRoles = { 'owner' },
     DeliveryAccessRoles = { 'owner', 'manager', 'driver' },
@@ -210,53 +220,10 @@ WSShopConfig.ShopTypes = {
     },
 }
 
-WSShopConfig.Shops = {
-    legion247 = {
-        label = 'Legion Square 24/7',
-        type = '247',
-        ped = { model = 'mp_m_shopkeep_01', scenario = 'WORLD_HUMAN_STAND_MOBILE' },
-        coords = vector3(25.7, -1345.3, 29.5),
-        heading = 271.0,
-        zone = { length = 2.0, width = 2.0, minZ = 28.5, maxZ = 30.5 },
-        blip = { sprite = 59, color = 1, scale = 0.8 },
-        defaultStock = 'config',
-    },
-    sandy247 = {
-        label = 'Sandy Shores 24/7',
-        type = '247',
-        ped = { model = 'mp_m_shopkeep_01', scenario = 'WORLD_HUMAN_STAND_MOBILE' },
-        coords = vector3(1961.24, 3740.3, 32.34),
-        heading = 312.0,
-        zone = { length = 2.0, width = 2.0, minZ = 31.34, maxZ = 33.34 },
-        blip = { sprite = 59, color = 1, scale = 0.8 },
-        defaultStock = 'config',
-    },
-    paleto247 = {
-        label = 'Paleto Bay 24/7',
-        type = '247',
-        ped = { model = 'mp_m_shopkeep_01', scenario = 'WORLD_HUMAN_STAND_MOBILE' },
-        coords = vector3(1730.12, 6413.02, 35.04),
-        heading = 67.0,
-        zone = { length = 2.0, width = 2.0, minZ = 34.04, maxZ = 36.04 },
-        blip = { sprite = 59, color = 1, scale = 0.8 },
-        defaultStock = 'config',
-    },
-}
+-- Shops werden über das Admin-Panel erstellt und in der Datenbank gespeichert.
+WSShopConfig.Shops = {}
 
-WSShopConfig.Depots = {
-    {
-        label = 'Los Santos Logistik',
-        coords = vector3(1204.51, -3115.38, 5.54),
-        heading = 0.0,
-        radius = 40.0,
-    },
-    {
-        label = 'Paleto Bay Depot',
-        coords = vector3(169.34, 6624.28, 31.64),
-        heading = 45.0,
-        radius = 35.0,
-    },
-}
+WSShopConfig.Depots = {}
 
 WSShopConfig.DeliveryVehicles = {
     pony = {

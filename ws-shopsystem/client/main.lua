@@ -1,4 +1,5 @@
 local QBCore = exports['qb-core']:GetCoreObject()
+local Config = WSShopConfig
 
 WSShopClient = WSShopClient or {}
 WSShopClient.ActiveShop = nil
@@ -97,7 +98,20 @@ RegisterNetEvent('ws-shopsystem:client:openAdminOverview', function(payload)
     SetNuiFocus(true, true)
     SendNUIMessage({
         action = 'openAdminOverview',
-        shops = payload,
+        shops = payload and payload.shops or {},
+        shopTypes = payload and payload.shopTypes or {},
+        vehicleTemplates = payload and payload.vehicleTemplates or payload and payload.deliveryVehicles or {},
+        deliveryVehicles = payload and payload.deliveryVehicles or {},
+        depots = payload and payload.depots or {},
+    })
+end)
+
+RegisterNetEvent('ws-shopsystem:client:nuiNotify', function(message, nType, duration)
+    SendNUIMessage({
+        action = 'notify',
+        message = message,
+        type = nType,
+        duration = duration,
     })
 end)
 
@@ -267,6 +281,26 @@ RegisterNUICallback('adminClose', function(_, cb)
     cb('ok')
 end)
 
+RegisterNUICallback('adminSaveShop', function(data, cb)
+    QBCore.Functions.TriggerCallback('ws-shopsystem:server:adminSaveShop', function(result)
+        cb(result or { success = false })
+    end, data)
+end)
+
+RegisterNUICallback('adminGetPlayerCoords', function(_, cb)
+    local ped = PlayerPedId()
+    local coords = GetEntityCoords(ped)
+    local heading = GetEntityHeading(ped)
+    cb({
+        coords = {
+            x = coords.x,
+            y = coords.y,
+            z = coords.z,
+            heading = heading,
+        }
+    })
+end)
+
 RegisterCommand('ws-shop-close', function()
     if WSShopClient.ActiveShop then
         CloseUI()
@@ -274,6 +308,38 @@ RegisterCommand('ws-shop-close', function()
 end, false)
 
 RegisterKeyMapping('ws-shop-close', 'Shop Interface schliessen', 'keyboard', 'BACK')
+
+local adminCommand = Config.ManagementCommand or 'shopadmin'
+local adminSuggestionAdded = false
+
+local function addAdminSuggestion()
+    if adminSuggestionAdded then return end
+    adminSuggestionAdded = true
+    TriggerEvent('chat:addSuggestion', '/' .. adminCommand, 'Öffnet das Shop-Admin-Menü')
+end
+
+local function removeAdminSuggestion()
+    if not adminSuggestionAdded then return end
+    adminSuggestionAdded = false
+    TriggerEvent('chat:removeSuggestion', '/' .. adminCommand)
+end
+
+RegisterCommand(adminCommand, function()
+    TriggerServerEvent('ws-shopsystem:server:openAdminPanel')
+end, false)
+
+CreateThread(function()
+    Wait(1000)
+    addAdminSuggestion()
+end)
+
+RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
+    addAdminSuggestion()
+end)
+
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    removeAdminSuggestion()
+end)
 
 RegisterNetEvent('ws-shopsystem:client:receiveShopCache', function(payload)
     TriggerEvent('ws-shopsystem:client:setupZones', payload)

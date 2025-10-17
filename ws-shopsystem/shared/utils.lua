@@ -33,7 +33,10 @@ Utils.GetPlayerData = function(source)
 end
 
 Utils.Notify = function(source, message, nType, length)
-    TriggerClientEvent('QBCore:Notify', source, message, nType or 'primary', length or 5000)
+    local notifyType = nType or 'primary'
+    local duration = length or 5000
+    TriggerClientEvent('QBCore:Notify', source, message, notifyType, duration)
+    TriggerClientEvent('ws-shopsystem:client:nuiNotify', source, message, notifyType, duration)
 end
 
 Utils.Locale = function(key, ...)
