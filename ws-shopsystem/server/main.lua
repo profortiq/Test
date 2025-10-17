@@ -221,6 +221,142 @@ local function SanitizeRoutes(routes)
     return result
 end
 
+local function SanitizeVehicles(list)
+    local sanitized = {}
+    if type(list) ~= 'table' then return sanitized end
+
+    local seen = {}
+    for _, entry in ipairs(list) do
+        local entryType = type(entry)
+        local key
+        local model
+        local label
+        local price = 0
+        local minLevel = 1
+        local capacity = 0
+        local trunk = 0
+        local fuelModifier = 1.0
+
+        if entryType == 'string' then
+            key = NormalizeIdentifier(entry)
+            model = Trim(entry)
+            label = Trim(entry)
+        elseif entryType == 'table' then
+            key = entry.key or entry.vehicle_key or entry.model or entry.label or entry.name
+            key = NormalizeIdentifier(key)
+            model = Trim(entry.model) or Trim(entry.spawn) or Trim(entry.vehicle) or Trim(entry.modelName) or Trim(entry.vehicleModel)
+            label = Trim(entry.label) or Trim(entry.name)
+            price = tonumber(entry.price or entry.cost) or 0
+            minLevel = tonumber(entry.minLevel or entry.min_level or entry.level) or 1
+            capacity = tonumber(entry.capacity or entry.cargo or entry.maxCapacity) or 0
+            trunk = tonumber(entry.trunk or entry.trunk_size or entry.trunkInventory) or 0
+            fuelModifier = tonumber(entry.fuelModifier or entry.fuel_modifier) or 1.0
+        end
+
+        if key then
+            model = model and Trim(model) or key
+            label = label and Trim(label) or model
+            price = math.max(0, math.floor(tonumber(price) or 0))
+            minLevel = math.max(1, math.floor(tonumber(minLevel) or 1))
+            capacity = math.max(0, math.floor(tonumber(capacity) or 0))
+            trunk = math.max(0, math.floor(tonumber(trunk) or 0))
+            local fuel = tonumber(fuelModifier) or 1.0
+            if fuel <= 0 then fuel = 1.0 end
+
+            if not seen[key] then
+                sanitized[#sanitized + 1] = {
+                    key = key,
+                    model = model,
+                    label = label,
+                    price = price,
+                    minLevel = minLevel,
+                    capacity = capacity,
+                    trunk = trunk,
+                    fuelModifier = fuel,
+                }
+                seen[key] = true
+            end
+        end
+    end
+
+    return sanitized
+end
+
+local function BuildVehicleMap(list, alreadySanitized)
+    local entries = alreadySanitized and (list or {}) or SanitizeVehicles(list)
+    local map = {}
+    for _, vehicle in ipairs(entries) do
+        if type(vehicle) == 'table' and vehicle.key then
+            map[vehicle.key] = {
+                key = vehicle.key,
+                model = vehicle.model or vehicle.key,
+                label = vehicle.label or vehicle.model or vehicle.key,
+                price = math.max(0, math.floor(tonumber(vehicle.price) or 0)),
+                minLevel = math.max(1, math.floor(tonumber(vehicle.minLevel or vehicle.min_level) or 1)),
+                capacity = math.max(0, math.floor(tonumber(vehicle.capacity) or 0)),
+                trunk = math.max(0, math.floor(tonumber(vehicle.trunk or vehicle.trunk_size) or 0)),
+                fuelModifier = tonumber(vehicle.fuelModifier or vehicle.fuel_modifier) or 1.0,
+            }
+        end
+    end
+    return map
+end
+
+WSShops = WSShops or {}
+WSShops.SanitizeVehicles = SanitizeVehicles
+WSShops.BuildVehicleMap = function(list)
+    return BuildVehicleMap(list, false)
+end
+
+local function GetVehicleMap(shop)
+    if not shop then return {} end
+    shop.metadata = shop.metadata or {}
+    local creator = shop.metadata.creator or {}
+
+    if creator.vehicleMap and next(creator.vehicleMap) then
+        return creator.vehicleMap
+    end
+
+    local vehicles = creator.vehicles
+    if type(vehicles) ~= 'table' or #vehicles == 0 then
+        vehicles = {}
+        if shop.id then
+            local rows = MySQL.query.await([[SELECT vehicle_key, model, label, price, min_level, capacity, trunk_size, fuel_modifier
+                FROM ws_shop_allowed_vehicles WHERE shop_id = ? ORDER BY sort_index ASC, id ASC
+            ]], { shop.id }) or {}
+            for _, row in ipairs(rows) do
+                vehicles[#vehicles + 1] = {
+                    key = row.vehicle_key,
+                    model = row.model,
+                    label = row.label,
+                    price = row.price,
+                    minLevel = row.min_level,
+                    capacity = row.capacity,
+                    trunk = row.trunk_size,
+                    fuelModifier = row.fuel_modifier,
+                }
+            end
+        end
+    end
+
+    vehicles = SanitizeVehicles(vehicles)
+    creator.vehicles = vehicles
+    creator.vehicleMap = BuildVehicleMap(vehicles, true)
+
+    shop.metadata.creator = creator
+    shop.metadata.vehicleMap = creator.vehicleMap
+    return creator.vehicleMap or {}
+end
+
+local function GetVehicleConfig(shop, key)
+    if not shop or not key then return nil end
+    local map = GetVehicleMap(shop)
+    return map[key]
+end
+
+WSShops.GetVehicleMap = GetVehicleMap
+WSShops.GetVehicleConfig = GetVehicleConfig
+
 local function PersistDropoffs(shopId, dropoffs)
     local ok, err = pcall(function()
         MySQL.update.await('DELETE FROM ws_shop_dropoffs WHERE shop_id = ?', { shopId })
@@ -310,20 +446,29 @@ local function PersistRoutes(shopId, routes)
 end
 
 local function PersistAllowedVehicles(shopId, vehicles)
+    local sanitized = SanitizeVehicles(vehicles)
     local ok, err = pcall(function()
         MySQL.update.await('DELETE FROM ws_shop_allowed_vehicles WHERE shop_id = ?', { shopId })
-        for index, vehicleKey in ipairs(vehicles or {}) do
-            if type(vehicleKey) == 'string' and Config.DeliveryVehicles[vehicleKey] then
-                MySQL.insert.await('INSERT INTO ws_shop_allowed_vehicles (shop_id, sort_index, vehicle_key) VALUES (?, ?, ?)', {
-                    shopId,
-                    index,
-                    vehicleKey,
-                })
-            end
+        for index, vehicle in ipairs(sanitized) do
+            MySQL.insert.await([[INSERT INTO ws_shop_allowed_vehicles
+                (shop_id, sort_index, vehicle_key, model, label, price, min_level, capacity, trunk_size, fuel_modifier)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ]], {
+                shopId,
+                index,
+                vehicle.key,
+                vehicle.model,
+                vehicle.label,
+                vehicle.price,
+                vehicle.minLevel,
+                vehicle.capacity,
+                vehicle.trunk,
+                vehicle.fuelModifier,
+            })
         end
     end)
     if not ok then return false, err end
-    return true
+    return true, nil, sanitized
 end
 
 local function PersistProductCategories(shopId, categories)
@@ -354,8 +499,10 @@ local function PersistCreatorData(shopId, creator)
     if not ok then return false, err end
     ok, err = PersistRoutes(shopId, creator.routes)
     if not ok then return false, err end
-    ok, err = PersistAllowedVehicles(shopId, creator.vehicles)
+    local sanitizedVehicles
+    ok, err, sanitizedVehicles = PersistAllowedVehicles(shopId, creator.vehicles)
     if not ok then return false, err end
+    creator.vehicles = sanitizedVehicles or {}
     ok, err = PersistProductCategories(shopId, creator.products)
     if not ok then return false, err end
     return true
@@ -490,15 +637,9 @@ local function CreateShopFromPayload(payload, src, suppressNotify)
         },
     }
 
-    if type(payload.vehicles) == 'table' then
-        local seen = {}
-        for _, key in ipairs(payload.vehicles) do
-            if type(key) == 'string' and Config.DeliveryVehicles[key] and not seen[key] then
-                metadata.creator.vehicles[#metadata.creator.vehicles + 1] = key
-                seen[key] = true
-            end
-        end
-    end
+    metadata.creator.vehicles = SanitizeVehicles(payload.vehicles)
+    metadata.creator.vehicleMap = BuildVehicleMap(metadata.creator.vehicles, true)
+    metadata.vehicleMap = metadata.creator.vehicleMap
 
     if type(payload.products) == 'table' then
         local seen = {}
@@ -750,20 +891,19 @@ end
 local function PrepareShopPayload(shop, options)
     options = options or {}
 
-    local allowedVehicles = nil
-    if shop.metadata and shop.metadata.creator and shop.metadata.creator.vehicles then
-        allowedVehicles = shop.metadata.creator.vehicles
-    end
-
     local deliveryVehicles = {}
-    if allowedVehicles and type(allowedVehicles) == 'table' and next(allowedVehicles) then
-        for _, key in ipairs(allowedVehicles) do
-            if Config.DeliveryVehicles[key] then
-                deliveryVehicles[key] = SanitizeForClient(Config.DeliveryVehicles[key])
-            end
-        end
-    else
-        deliveryVehicles = SanitizeForClient(Config.DeliveryVehicles)
+    local vehicleMap = GetVehicleMap(shop)
+    for key, vehicle in pairs(vehicleMap) do
+        deliveryVehicles[key] = SanitizeForClient({
+            key = key,
+            label = vehicle.label,
+            model = vehicle.model,
+            capacity = vehicle.capacity,
+            minLevel = vehicle.minLevel,
+            price = vehicle.price,
+            trunk = vehicle.trunk,
+            fuelModifier = vehicle.fuelModifier,
+        })
     end
 
     local data = {
@@ -800,6 +940,43 @@ local function PrepareShopPayload(shop, options)
     return data
 end
 
+local function FetchVehicleTemplates()
+    local templates = {}
+
+    if WSShops.Cache and WSShops.Cache.ShopsByIdentifier then
+        for _, shop in pairs(WSShops.Cache.ShopsByIdentifier) do
+            local map = GetVehicleMap(shop)
+            for key, vehicle in pairs(map) do
+                if key and not templates[key] then
+                    templates[key] = vehicle
+                end
+            end
+        end
+    end
+
+    local rows = MySQL.query.await('SELECT vehicle_key, model, label, price, min_level, capacity, trunk_size, fuel_modifier FROM ws_shop_allowed_vehicles', {}) or {}
+    for _, row in ipairs(rows) do
+        local sanitized = SanitizeVehicles({
+            {
+                key = row.vehicle_key,
+                model = row.model,
+                label = row.label,
+                price = row.price,
+                minLevel = row.min_level,
+                capacity = row.capacity,
+                trunk = row.trunk_size,
+                fuelModifier = row.fuel_modifier,
+            },
+        })
+        local vehicle = sanitized[1]
+        if vehicle and vehicle.key and not templates[vehicle.key] then
+            templates[vehicle.key] = vehicle
+        end
+    end
+
+    return templates
+end
+
 local function BuildAdminPayload()
     local shops = {}
     for identifier, shop in pairs(WSShops.Cache and WSShops.Cache.ShopsByIdentifier or {}) do
@@ -827,7 +1004,7 @@ local function BuildAdminPayload()
     return {
         shops = shops,
         shopTypes = SanitizeForClient(Config.ShopTypes),
-        deliveryVehicles = SanitizeForClient(Config.DeliveryVehicles),
+        vehicleTemplates = SanitizeForClient(FetchVehicleTemplates()),
         depots = SanitizeForClient(Config.Depots),
     }
 end
@@ -1317,7 +1494,7 @@ RegisterNetEvent('ws-shopsystem:server:unlockVehicle', function(identifier, vehi
         return
     end
 
-    local vehicleConfig = Config.DeliveryVehicles[vehicleKey]
+    local vehicleConfig = GetVehicleConfig(shop, vehicleKey)
     if not vehicleConfig then
         Utils.Notify(src, Utils.Locale('error.invalid_amount'), 'error')
         return
@@ -1355,7 +1532,7 @@ RegisterNetEvent('ws-shopsystem:server:unlockVehicle', function(identifier, vehi
     WSShops.UpdateCache(shop)
     SaveMetadata(shop)
 
-    Utils.Notify(src, ('%s freigeschaltet.'):format(vehicleConfig.label), 'success')
+    Utils.Notify(src, ('%s freigeschaltet.'):format(vehicleConfig.label or vehicleKey), 'success')
     TriggerClientEvent('ws-shopsystem:client:shopUpdated', -1, shop.identifier, {
         vehicleOwnership = SanitizeForClient(ownership),
     })
@@ -1709,17 +1886,7 @@ local function AdminSaveShopInternal(src, payload)
     creator.vehicleSpawns = SanitizePointList(payload.vehicleSpawns, true)
     creator.routes = SanitizeRoutes(payload.routes)
 
-    local vehicles = {}
-    local seenVehicles = {}
-    if type(payload.vehicles) == 'table' then
-        for _, key in ipairs(payload.vehicles) do
-            if type(key) == 'string' and Config.DeliveryVehicles[key] and not seenVehicles[key] then
-                vehicles[#vehicles + 1] = key
-                seenVehicles[key] = true
-            end
-        end
-    end
-    creator.vehicles = vehicles
+    creator.vehicles = SanitizeVehicles(payload.vehicles)
 
     local categorySet = {}
     if type(payload.products) == 'table' then
@@ -1762,16 +1929,20 @@ local function AdminSaveShopInternal(src, payload)
     local zoneMinZ = tonumber(zone.minZ) or (z - 1.0)
     local zoneMaxZ = tonumber(zone.maxZ) or (z + 1.0)
 
-    local metadataJson, metadataErr = EncodeForJson(shop.metadata)
-    if not metadataJson then
-        Utils.Debug('Failed to encode metadata for shop %s: %s', shop.identifier or '?', metadataErr or 'unknown')
-        return false, nil, 'Shop konnte nicht gespeichert werden (Metadatenfehler).'
-    end
-
     local persisted, persistErr = PersistCreatorData(shop.id, creator)
     if not persisted then
         Utils.Debug('Failed to persist creator data for shop %s: %s', shop.identifier or '?', persistErr or 'unknown')
         return false, nil, 'Shop konnte nicht gespeichert werden (Datenbankfehler).'
+    end
+
+    creator.vehicleMap = BuildVehicleMap(creator.vehicles, true)
+    shop.metadata.creator = creator
+    shop.metadata.vehicleMap = creator.vehicleMap
+
+    local metadataJson, metadataErr = EncodeForJson(shop.metadata)
+    if not metadataJson then
+        Utils.Debug('Failed to encode metadata for shop %s: %s', shop.identifier or '?', metadataErr or 'unknown')
+        return false, nil, 'Shop konnte nicht gespeichert werden (Metadatenfehler).'
     end
 
     local updateOk, updateErr = pcall(function()

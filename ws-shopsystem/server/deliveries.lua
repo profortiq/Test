@@ -63,7 +63,7 @@ local function CloneItems(items)
 end
 
 local function CalculateVehicleCapacity(shop, vehicleKey)
-    local vehicleConfig = Config.DeliveryVehicles[vehicleKey]
+    local vehicleConfig = WSShops.GetVehicleConfig and WSShops.GetVehicleConfig(shop, vehicleKey)
     if not vehicleConfig then return 0 end
     local base = tonumber(vehicleConfig.capacity or 0) or 0
     local bonusPerLevel = Config.DeliveryCapacityBonusPerLevel or 0
@@ -199,19 +199,26 @@ function Deliveries.Create(shop, citizenid, data)
     if not data.items or #data.items == 0 then return nil end
 
     local identifier = GenerateIdentifier(shop)
-    local vehicleKey = data.vehicle
-    local vehicleConfig = Config.DeliveryVehicles[vehicleKey]
-    if not vehicleConfig then return nil end
+    local ownership = (shop.metadata and shop.metadata.vehicleUnlocks) or {}
+    local map = WSShops.GetVehicleMap and WSShops.GetVehicleMap(shop) or {}
+    local vehicleKey = type(data.vehicle) == 'string' and data.vehicle or nil
+    local vehicleConfig = nil
 
-    if shop.metadata and shop.metadata.creator and shop.metadata.creator.vehicles then
-        local allowed = false
-        for _, key in ipairs(shop.metadata.creator.vehicles) do
-            if key == vehicleKey then
-                allowed = true
+    if vehicleKey then
+        vehicleConfig = map[vehicleKey] or (WSShops.GetVehicleConfig and WSShops.GetVehicleConfig(shop, vehicleKey))
+        if not vehicleConfig then return nil, 'vehicle' end
+        if not (ownership[vehicleKey] and ownership[vehicleKey].unlocked) then
+            return nil, 'vehicle'
+        end
+    else
+        for key, entry in pairs(map) do
+            if ownership[key] and ownership[key].unlocked then
+                vehicleKey = key
+                vehicleConfig = entry
                 break
             end
         end
-        if not allowed then
+        if not vehicleConfig then
             return nil, 'vehicle'
         end
     end
@@ -263,6 +270,9 @@ function Deliveries.Create(shop, citizenid, data)
         depot = depot,
         dropoff = dropoff,
         vehicle = vehicleKey,
+        vehicleLabel = vehicleConfig.label,
+        model = vehicleConfig.model,
+        fuelModifier = vehicleConfig.fuelModifier,
         totalQuantity = totalQuantity,
     }
 
@@ -370,7 +380,17 @@ function Deliveries.Start(shop, player, deliveryIdentifier, vehicleKey, customPl
     local coords = depot.coords or VecToTable(shop.coords)
     local heading = depot.heading or shop.heading or 0.0
 
-    local vehicle = SpawnVehicleForPlayer(player.PlayerData.source, vehicleKey or delivery.vehicle_model or 'pony', coords, heading)
+    local ownership = (shop.metadata and shop.metadata.vehicleUnlocks) or {}
+    local desiredKey = vehicleKey or delivery.vehicle_model
+    if not desiredKey or not (ownership[desiredKey] and ownership[desiredKey].unlocked) then
+        return false, 'vehicle'
+    end
+
+    local vehicleConfig = WSShops.GetVehicleConfig and WSShops.GetVehicleConfig(shop, desiredKey)
+    local spawnModel = (vehicleConfig and vehicleConfig.model) or desiredKey or 'pony'
+    local vehicleLabel = (vehicleConfig and vehicleConfig.label) or desiredKey or 'Lieferfahrzeug'
+
+    local vehicle = SpawnVehicleForPlayer(player.PlayerData.source, spawnModel, coords, heading)
     if not vehicle then
         return false, 'vehicle'
     end
@@ -382,11 +402,14 @@ function Deliveries.Start(shop, player, deliveryIdentifier, vehicleKey, customPl
 
     delivery.status = 'active'
     delivery.citizenid = player.PlayerData.citizenid
-    delivery.vehicle_model = vehicleKey or delivery.vehicle_model
+    delivery.vehicle_model = desiredKey or delivery.vehicle_model
     delivery.vehicle_plate = plate
     delivery.metadata = delivery.metadata or {}
     delivery.metadata.depot = depot
     delivery.metadata.dropoff = dropoff
+    delivery.metadata.vehicle = delivery.vehicle_model
+    delivery.metadata.vehicleLabel = vehicleLabel
+    delivery.metadata.model = spawnModel
 
     UpdateDeliveryStatus(shop, delivery, 'active', {
         citizenid = player.PlayerData.citizenid,
@@ -395,7 +418,10 @@ function Deliveries.Start(shop, player, deliveryIdentifier, vehicleKey, customPl
         metadata = EncodeMetadata(delivery.metadata),
     })
 
-    local fuelCost = math.floor((Config.DeliveryFuelCostPerKm or 0) * (delivery.distance or 0))
+    local baseFuelCost = math.floor((Config.DeliveryFuelCostPerKm or 0) * (delivery.distance or 0))
+    local fuelModifier = vehicleConfig and vehicleConfig.fuelModifier or delivery.metadata.fuelModifier or 1.0
+    delivery.metadata.fuelModifier = fuelModifier
+    local fuelCost = math.floor(baseFuelCost * math.max(fuelModifier, 0.1))
 
     TriggerClientEvent('ws-shopsystem:client:deliveryStarted', player.PlayerData.source, shop.identifier, delivery.identifier, {
         coords = delivery.metadata.depot.coords,
@@ -404,7 +430,7 @@ function Deliveries.Start(shop, player, deliveryIdentifier, vehicleKey, customPl
     }, {
         coords = delivery.metadata.dropoff.coords,
         label = delivery.metadata.dropoff.label,
-    }, netId, plate, delivery.vehicle_model, fuelCost)
+    }, netId, plate, vehicleLabel, fuelCost)
 
     if Config.Notifications and Config.Notifications.phone and delivery.metadata.depot then
         local subject = Config.Notifications.phone.subjectDelivery:format(shop.label)

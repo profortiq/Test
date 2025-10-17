@@ -33,8 +33,27 @@ Stelle sicher, dass alle Ressourcen aktuell sind und **vor** `ws-shopsystem` in 
    ensure ws-shopsystem
    ```
 
-4. **Server neu starten**  
+4. **Server neu starten**
    Nach dem Neustart seedet das Script automatisch alle Shops aus der `config.lua` in die Datenbank.
+
+---
+
+## Admin-Creator & Shopverwaltung
+
+- Öffne das Creator-Panel mit `/shopadmin` (oder der in `config.lua` definierten Taste). Die linke Spalte listet alle Shops, über
+  „Neuer Shop“ wird der aktuelle Standort übernommen. Ped, Zone, Liefer- und Depotpunkte sowie Fahrzeug-Spawns lassen sich direkt
+  erfassen – Koordinaten werden auf Wunsch per „Position“-Button vom eigenen Charakter übernommen.
+- Jeder Shop besitzt eine eigene Fahrzeugverwaltung. Modelle, Labels, Preise, Mindestlevel, Kapazitäten, Kofferraumgrößen und
+  Spritfaktoren werden vollständig über das UI gepflegt und landen nach dem Speichern automatisch in `ws_shop_allowed_vehicles`.
+  Die alte Tabelle `WSShopConfig.DeliveryVehicles` entfällt damit komplett.
+- Dropoffs, Depots, Spawnpunkte, Liefer-Routen und Produktkategorien werden beim Speichern ebenfalls in die Datenbank geschrieben
+  und stehen nach einem Reload sofort im Creator sowie in der Welt bereit.
+- Scheitert das Speichern (z. B. wegen fehlender Berechtigungen oder Datenbankproblemen), informiert das UI und es bleiben keine
+  halbfertigen Einträge zurück.
+
+Im Bossmenü der Spieler existiert zusätzlich der Tab „Aufträge“ (Sidebar-Button), in dem alle offenen Liefermissionen des Shops
+auflisten, neue Aufträge geplant und mit einem Klick gestartet werden können. Beim Start spawnt das konfigurierte Fahrzeug am
+zugewiesenen Depot und die zuvor definierten Routenpunkte werden genutzt.
 
 ---
 
@@ -48,7 +67,7 @@ Alle Einstellungen findest du in `config.lua`. Wichtige Bereiche:
 - **Rollen (`WSShopConfig.Roles`)**: Berechtigungen, Standardlöhne, Zugriff auf Menüpunkte.
 - **Shoptypen (`WSShopConfig.ShopTypes`)**: Artikel, Preise, Icons, Kauf-/Verkaufspreise.
 - **Shop-Liste (`WSShopConfig.Shops`)**: Wird bewusst leer gelassen. Neue Shops werden vollständig über das Admin-Panel erstellt und landen direkt in der Datenbank.
-- **Depots & Fahrzeuge (`WSShopConfig.Depots`, `WSShopConfig.DeliveryVehicles`)**: Globale Depot-Vorschläge und Fahrzeugtemplates. Konkrete Standorte, Spawns, Dropoffs & Inventar werden im Admin-Panel gepflegt und in der Datenbank gespeichert.
+- **Depots (`WSShopConfig.Depots`)**: Optionale globale Vorschläge für Depots, falls der Creator keine individuellen Punkte setzt. Fahrzeuge werden ausschließlich im Admin-Panel gepflegt und landen mitsamt Preis-, Level- und Kapazitätsangaben direkt in der Datenbank.
 - **Benachrichtigungen (`WSShopConfig.Notifications`)**: Mail-Texte, Webhook-Einstellungen.
 
 > **Hinweis:** Alle Umlaute wurden als ASCII (z. B. `ae`, `oe`) hinterlegt, damit selbst bei ANSI-Encoding keine Probleme auftreten. Passe Texte nach Bedarf an.
@@ -65,8 +84,11 @@ Alle Einstellungen findest du in `config.lua`. Wichtige Bereiche:
 
 ### Verwaltung (Bossmenü)
 - Öffne den Shop → klicke auf „Verwaltung“ (Owner/Manager-Rolle benötigt).  
-- Tabs: `Dashboard`, `Lager`, `Mitarbeiter`, `Lieferungen`, `Finanzen`, `Fahrzeuge`.  
+- Tabs: `Dashboard`, `Lager`, `Mitarbeiter`, `Aufträge`, `Finanzen`, `Fahrzeuge`.
 - Preise anpassen, Mitarbeiter einstellen/entlassen, Lieferungen beauftragen, Ein-/Auszahlungen.
+- Im Tab `Fahrzeuge` können Shopbesitzer die freigeschalteten Lieferfahrzeuge sehen und kaufen. Welche Modelle zur Auswahl stehen,
+  definiert der Admin im Creator. Dort lassen sich Modellname (Spawncode), Preis, Mindestlevel, Kapazität, Kofferraum und
+  Spritfaktor pro Shop speichern – komplett ohne Einträge in der `config.lua`.
 
 ### Liefermissionen
 1. Erstelle im Tab „Lieferungen“ eine manuelle Bestellung oder warte auf eine automatische, wenn Lagerbestand fällt.  
@@ -98,8 +120,9 @@ Weitere Aktionen laufen über den NUI-Workflow oder `qb-target` (Interaktionen a
 - `ws_shop_inventory` – Lagerbestand, Preise, Levelanforderungen  
 - `ws_shop_employees` – Mitarbeiterliste inkl. Rollen & Status  
 - `ws_shop_finance_log` – Finanztransaktionen (Ein-/Auszahlungen, Verkäufe, Strafen)  
-- `ws_shop_deliveries` / `ws_shop_delivery_items` – Lieferaufträge und Fracht  
-- `ws_shop_vehicles` – Persistente Lieferfahrzeuge (Placeholder für spätere Erweiterungen)  
+- `ws_shop_deliveries` / `ws_shop_delivery_items` – Lieferaufträge und Fracht
+- `ws_shop_allowed_vehicles` – Fahrzeugpools pro Shop (Key, Modell, Preis, Level, Kapazität, Verbrauch)
+- `ws_shop_vehicles` – Persistente Lieferfahrzeuge (Placeholder für spätere Erweiterungen)
 - `ws_shop_statistics_daily` – Tagesstatistiken (Umsatz, Lieferungen, XP)  
 
 ---
