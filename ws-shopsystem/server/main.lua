@@ -841,6 +841,8 @@ local function PlayerIsAdmin(src)
     return false
 end
 
+WSShops.PlayerIsAdmin = PlayerIsAdmin
+
 local function BuildShopCachePayload()
     local payload = {}
     for identifier, shop in pairs(WSShops.Cache and WSShops.Cache.ShopsByIdentifier or {}) do
