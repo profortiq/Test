@@ -224,6 +224,13 @@ body.nui-active::before {
     flex: 1;
     display: flex;
     gap: 24px;
+    width: 100%;
+    min-height: 0;
+}
+
+#management-view {
+    flex-direction: column;
+    align-items: stretch;
 }
 
 .sidebar {
@@ -483,6 +490,7 @@ body.nui-active::before {
     display: flex;
     align-items: stretch;
     gap: 24px;
+    padding-top: 8px;
     min-height: 0;
 }
 
@@ -645,12 +653,12 @@ body.nui-active::before {
 
 .management-tabs {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
+    flex-direction: row;
+    align-items: center;
     justify-content: center;
     gap: 18px;
-    padding: 24px 16px 24px 0;
-    min-width: 96px;
+    padding: 12px 0 4px;
+    width: 100%;
 }
 
 .management-tab {
@@ -659,8 +667,9 @@ body.nui-active::before {
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    padding: 10px 0;
-    width: 80px;
+    padding: 10px 18px;
+    width: auto;
+    min-width: 0;
     border: none;
     background: transparent;
     cursor: pointer;
@@ -1806,6 +1815,10 @@ body.nui-active::before {
     }
     #management-view {
         flex-direction: column;
+    }
+    .management-tabs {
+        flex-wrap: wrap;
+        row-gap: 12px;
     }
     .management-content {
         flex-direction: column;
