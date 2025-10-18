@@ -50,7 +50,7 @@ const managementTabs = [
     { key: 'dashboard', label: 'Dashboard' },
     { key: 'inventory', label: 'Lager' },
     { key: 'employees', label: 'Mitarbeiter' },
-    { key: 'deliveries', label: 'Lieferungen' },
+    { key: 'deliveries', label: 'Aufträge' },
     { key: 'finance', label: 'Finanzen' },
     { key: 'vehicles', label: 'Fahrzeuge' },
 ];
@@ -85,6 +85,22 @@ const nuiInvoke = async (action, data = {}) => {
 const currency = (value) => `$${Number(value || 0).toLocaleString('de-DE')}`;
 
 let notificationSeq = 0;
+
+const formatDeliveryStatus = (status) => {
+    const value = (status || '').toLowerCase();
+    switch (value) {
+        case 'active':
+            return 'Aktiv';
+        case 'completed':
+            return 'Abgeschlossen';
+        case 'failed':
+            return 'Fehlgeschlagen';
+        case 'pending':
+            return 'Ausstehend';
+        default:
+            return value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Offen';
+    }
+};
 
 const removeNotification = (id) => {
     const index = state.notifications.findIndex((entry) => entry.id === id);
@@ -830,35 +846,452 @@ const renderVehiclesPanel = () => {
     return panel;
 };
 
+const renderManagementSidebar = () => {
+    const sidebar = document.getElementById('management-sidebar');
+    if (!sidebar) return;
+
+    if (!state.shop) {
+        sidebar.innerHTML = `
+            <div class="management-sidebar__section">
+                <div class="management-sidebar__empty">Kein Shop ausgewählt.</div>
+            </div>
+        `;
+        return;
+    }
+
+    const deliveries = Array.isArray(state.shop.deliveries) ? state.shop.deliveries : [];
+    const vehicles = state.shop.deliveryVehicles || {};
+
+    const listHtml = deliveries.length
+        ? deliveries.map((delivery, index) => {
+            const identifier = delivery?.identifier || `delivery-${index + 1}`;
+            const label = delivery?.metadata?.label || identifier;
+            const statusKey = (delivery?.status || 'pending').toLowerCase();
+            const statusLabel = formatDeliveryStatus(delivery?.status);
+            const totalQuantity = (Array.isArray(delivery?.items) ? delivery.items : []).reduce((sum, item) => sum + Number(item?.quantity || 0), 0);
+            const vehicleConfig = vehicles[delivery?.vehicle_model] || {};
+            const vehicleLabel = vehicleConfig.label || delivery?.vehicle_model || 'Nicht zugewiesen';
+            const previewItems = (() => {
+                const items = Array.isArray(delivery?.items) ? delivery.items : [];
+                if (!items.length) return '';
+                const preview = items.slice(0, 3).map((item) => `${item.label || item.item} x${item.quantity}`);
+                if (items.length > 3) {
+                    preview.push(`+${items.length - 3} weitere`);
+                }
+                return preview.join(', ');
+            })();
+
+            const routeLabel = delivery?.route?.label || delivery?.metadata?.routeLabel || '';
+            const statusClass = `management-order__status management-order__status--${statusKey}`;
+            const actionHtml = statusKey === 'pending'
+                ? `
+                    <div class="management-order__actions">
+                        <button class="btn secondary" data-action="start-delivery" data-delivery="${escapeHtml(identifier)}" data-vehicle="${escapeHtml(delivery?.vehicle_model || '')}">Starten</button>
+                    </div>
+                `
+                : '';
+
+            return `
+                <div class="management-order">
+                    <div class="management-order__meta">
+                        <span class="management-order__title">${escapeHtml(label)}</span>
+                        <span class="${statusClass}">${escapeHtml(statusLabel)}</span>
+                    </div>
+                    <div class="management-order__details">
+                        <span>${escapeHtml(vehicleLabel)} • ${totalQuantity} Stück</span>
+                        ${routeLabel ? `<span>Route: ${escapeHtml(routeLabel)}</span>` : ''}
+                        ${previewItems ? `<span>${escapeHtml(previewItems)}</span>` : ''}
+                    </div>
+                    ${actionHtml}
+                </div>
+            `;
+        }).join('')
+        : '<div class="management-sidebar__empty">Keine Aufträge vorhanden.</div>';
+
+    sidebar.innerHTML = `
+        <div class="management-sidebar__section">
+            <div class="management-sidebar__header">
+                <h4>Aufträge</h4>
+                <button class="btn ghost" data-action="goto-orders" data-tab="deliveries">Öffnen</button>
+            </div>
+            <div class="management-sidebar__list">
+                ${listHtml}
+            </div>
+        </div>
+    `;
+};
+
 const renderManagementPanel = () => {
     const container = document.getElementById('management-panel');
     if (!container) return;
     container.innerHTML = '';
     if (!state.shop) {
         container.appendChild(renderEmptyStatePanel('Kein Shop ausgewählt.'));
+        renderManagementSidebar();
         return;
     }
+
+    let panel = null;
     switch (state.managementTab) {
-        case 'dashboard':
-            container.appendChild(renderDashboardPanel());
-            break;
         case 'inventory':
-            container.appendChild(renderInventoryPanel());
+            panel = renderInventoryPanel();
             break;
         case 'employees':
-            container.appendChild(renderEmployeesPanel());
+            panel = renderEmployeesPanel();
             break;
         case 'deliveries':
-            container.appendChild(renderDeliveriesPanel());
+            panel = renderDeliveriesPanel();
             break;
         case 'finance':
-            container.appendChild(renderFinancePanel());
+            panel = renderFinancePanel();
             break;
         case 'vehicles':
-            container.appendChild(renderVehiclesPanel());
+            panel = renderVehiclesPanel();
             break;
+        case 'dashboard':
         default:
-            container.appendChild(renderDashboardPanel());
+            panel = renderDashboardPanel();
+            break;
+    }
+
+    if (panel) {
+        container.appendChild(panel);
+    }
+
+    renderManagementSidebar();
+};
+
+const getAdminSelectedShop = () => state.admin.shops.find((shop) => shop.identifier === state.admin.selected) || null;
+
+const toNumber = (value, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const normalizeIdentifier = (value) => {
+    if (!value) return '';
+    return String(value)
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '_')
+        .replace(/[^a-z0-9_]/g, '')
+        .replace(/_+/g, '_')
+        .replace(/^_/, '')
+        .replace(/_$/, '');
+};
+
+const flattenInventory = (inventory) => {
+    const items = [];
+    Object.entries(inventory || {}).forEach(([categoryKey, category]) => {
+        (category.items || []).forEach((item) => {
+            items.push({
+                id: item.id || null,
+                item: item.item || '',
+                label: item.label || '',
+                icon: item.icon || '',
+                category: categoryKey,
+                quantity: toNumber(item.quantity, 0),
+                basePrice: toNumber(item.basePrice ?? item.base_price, 0),
+                overridePrice: toNumber(item.overridePrice ?? item.override_price ?? item.basePrice ?? item.base_price, 0),
+                discount: toNumber(item.discount, 0),
+                minLevel: toNumber(item.minLevel ?? item.min_level, 1),
+            });
+        });
+    });
+    items.sort((a, b) => (a.label || a.item || '').localeCompare(b.label || b.item || ''));
+    return items;
+};
+
+const normalizeVehicleDraftEntry = (entry) => {
+    if (!entry) return null;
+    const templates = state.admin.config.vehicleTemplates || {};
+    const templateFor = (key) => (key && templates[key]) || {};
+
+    if (typeof entry === 'string') {
+        const key = String(entry);
+        const template = templateFor(key);
+        return {
+            key,
+            model: template.model || key,
+            label: template.label || template.name || key,
+            price: toNumber(template.price, 0),
+            minLevel: Math.max(1, toNumber(template.minLevel, 1)),
+            capacity: toNumber(template.capacity, 0),
+            trunk: toNumber(template.trunk, 0),
+            fuelModifier: toNumber(template.fuelModifier ?? 1, 1),
+        };
+    }
+
+    if (typeof entry === 'object') {
+        const key = entry.key
+            || entry.vehicle_key
+            || entry.model
+            || entry.vehicle
+            || entry.spawn
+            || entry.spawnName
+            || entry.modelName
+            || entry.label
+            || entry.name;
+        if (!key) return null;
+        const template = templateFor(key);
+        const model = entry.model
+            || entry.spawn
+            || entry.vehicle
+            || entry.modelName
+            || template.model
+            || key;
+        const label = entry.label
+            || entry.display
+            || entry.name
+            || template.label
+            || template.name
+            || model
+            || key;
+        const price = toNumber(entry.price ?? entry.cost ?? entry.purchasePrice ?? template.price, 0);
+        const minLevel = Math.max(1, toNumber(entry.minLevel ?? entry.min_level ?? entry.level ?? template.minLevel, 1));
+        const capacity = toNumber(entry.capacity ?? entry.cargo ?? entry.maxCapacity ?? template.capacity, 0);
+        const trunk = toNumber(entry.trunk ?? entry.trunk_size ?? entry.trunkInventory ?? template.trunk, 0);
+        const fuel = toNumber(entry.fuelModifier ?? entry.fuel_modifier ?? template.fuelModifier ?? 1, 1);
+        return {
+            key: String(key),
+            model: model || String(key),
+            label: label || model || String(key),
+            price,
+            minLevel,
+            capacity,
+            trunk,
+            fuelModifier: fuel > 0 ? fuel : 1,
+        };
+    }
+
+    return null;
+};
+
+const normalizeRoutePoints = (points) => {
+    return (Array.isArray(points) ? points : []).map((point) => ({
+        x: toNumber(point.x, 0),
+        y: toNumber(point.y, 0),
+        z: toNumber(point.z, 0),
+        label: point.label || '',
+    }));
+};
+
+const buildAdminDraft = (shop) => {
+    if (!shop) return null;
+    const creator = shop.metadata?.creator || {};
+    const coords = creator.coords || shop.coords || { x: 0, y: 0, z: 0, w: shop.heading || 0 };
+    const pedSource = creator.ped || shop.config?.ped || {};
+    const zoneSource = creator.zone || shop.config?.zone || {};
+    const dropoffsSource = Array.isArray(creator.dropoffs) && creator.dropoffs.length
+        ? creator.dropoffs
+        : [{ x: coords.x ?? 0, y: coords.y ?? 0, z: coords.z ?? 0, label: shop.label || '' }];
+    const depotsSource = Array.isArray(creator.depots) ? creator.depots : [];
+    const vehiclesSource = Array.isArray(creator.vehicles) ? creator.vehicles : [];
+    const productsSource = Array.isArray(creator.products) ? creator.products : [];
+
+    const blipDisabled = creator.blip === false;
+    const blipSource = blipDisabled ? {} : (creator.blip || shop.config?.blip || {});
+    const blip = {
+        enabled: blipDisabled ? false : Boolean(blipSource && (blipSource.sprite || blipSource.color || blipSource.label || blipSource.scale)),
+        sprite: toNumber(blipSource.sprite, 59),
+        color: toNumber(blipSource.color, 1),
+        scale: Number.isFinite(blipSource.scale) ? Number(blipSource.scale) : 0.8,
+        label: blipSource.label || shop.label || '',
+        shortRange: blipSource.shortRange !== false,
+    };
+
+    const vehicleSpawns = Array.isArray(creator.vehicleSpawns)
+        ? creator.vehicleSpawns.map((point) => ({
+            x: toNumber(point.x ?? point.coords?.x, 0),
+            y: toNumber(point.y ?? point.coords?.y, 0),
+            z: toNumber(point.z ?? point.coords?.z, 0),
+            heading: toNumber(point.heading ?? point.w, coords.w ?? 0),
+            label: point.label || '',
+        }))
+        : [];
+
+    const vehicleDraft = [];
+    const seenVehicles = new Set();
+    vehiclesSource.forEach((entry) => {
+        const normalized = normalizeVehicleDraftEntry(entry);
+        if (!normalized || !normalized.key || seenVehicles.has(normalized.key)) return;
+        seenVehicles.add(normalized.key);
+        vehicleDraft.push(normalized);
+    });
+
+    const routes = Array.isArray(creator.routes)
+        ? creator.routes.map((route, index) => ({
+            label: route.label || `Route ${index + 1}`,
+            points: normalizeRoutePoints(route.points),
+        }))
+        : [];
+
+    return {
+        identifier: shop.identifier,
+        label: shop.label || '',
+        type: shop.type,
+        coords: {
+            x: Number(coords.x ?? 0),
+            y: Number(coords.y ?? 0),
+            z: Number(coords.z ?? 0),
+            heading: Number(coords.w ?? shop.heading ?? 0),
+        },
+        ped: {
+            model: pedSource.model || '',
+            scenario: pedSource.scenario || '',
+        },
+        zone: {
+            length: Number(zoneSource.length ?? 2.0),
+            width: Number(zoneSource.width ?? 2.0),
+            minZ: Number(zoneSource.minZ ?? (Number(coords.z ?? 0) - 1)),
+            maxZ: Number(zoneSource.maxZ ?? (Number(coords.z ?? 0) + 1)),
+        },
+        dropoffs: dropoffsSource.map((point) => ({
+            x: Number(point.x ?? 0),
+            y: Number(point.y ?? 0),
+            z: Number(point.z ?? 0),
+            label: point.label || '',
+        })),
+        depots: depotsSource.map((point) => ({
+            x: Number(point.x ?? point.coords?.x ?? 0),
+            y: Number(point.y ?? point.coords?.y ?? 0),
+            z: Number(point.z ?? point.coords?.z ?? 0),
+            heading: Number(point.heading ?? 0),
+            label: point.label || '',
+        })),
+        vehicles: vehiclesSource.map((vehicle) => String(vehicle)),
+        products: productsSource.map((product) => String(product)),
+        purchasePrice: toNumber(shop.purchasePrice ?? creator.purchasePrice, 0),
+        sellPrice: toNumber(shop.sellPrice ?? creator.sellPrice, 0),
+        inventory: flattenInventory(shop.inventory),
+        vehicleSpawns,
+        vehicles: vehicleDraft,
+        routes,
+        blip,
+        isNew: false,
+    };
+};
+
+const sanitizeCoords = (coords) => ({
+    x: toNumber(coords?.x, 0),
+    y: toNumber(coords?.y, 0),
+    z: toNumber(coords?.z, 0),
+    heading: toNumber(coords?.heading ?? coords?.w, 0),
+});
+
+const buildNewAdminDraft = (type, coords) => {
+    const typeKey = type || Object.keys(state.admin.config.shopTypes || {})[0] || '';
+    const typeConfig = state.admin.config.shopTypes[typeKey] || {};
+    const baseCoords = sanitizeCoords(coords || {});
+    return {
+        identifier: '',
+        label: '',
+        type: typeKey,
+        coords: baseCoords,
+        ped: { model: '', scenario: '' },
+        zone: {
+            length: 2.0,
+            width: 2.0,
+            minZ: baseCoords.z - 1,
+            maxZ: baseCoords.z + 1,
+        },
+        dropoffs: [{ x: baseCoords.x, y: baseCoords.y, z: baseCoords.z, label: '' }],
+        depots: [],
+        vehicles: [],
+        products: [],
+        purchasePrice: toNumber(typeConfig.purchasePrice, 0),
+        sellPrice: toNumber(typeConfig.sellPrice, 0),
+        inventory: [],
+        vehicleSpawns: [{
+            x: baseCoords.x,
+            y: baseCoords.y,
+            z: baseCoords.z,
+            heading: baseCoords.heading,
+            label: '',
+        }],
+        routes: [],
+        blip: {
+            enabled: false,
+            sprite: 59,
+            color: 1,
+            scale: 0.8,
+            label: '',
+            shortRange: true,
+        },
+        isNew: true,
+    };
+};
+
+const fetchCurrentPosition = async () => {
+    const payload = await nuiInvoke('adminGetPlayerCoords');
+    if (!payload) return null;
+    const coords = payload.coords || payload;
+    if (!coords) return null;
+    return sanitizeCoords(coords);
+};
+
+const updateZoneFromCoords = (draft, coords) => {
+    if (!draft || !coords) return;
+    draft.zone.minZ = coords.z - Math.max(1, draft.zone.length / 2);
+    draft.zone.maxZ = coords.z + Math.max(1, draft.zone.length / 2);
+};
+
+const setAdminData = (payload) => {
+    state.admin.shops = payload?.shops || [];
+    state.admin.config = {
+        shopTypes: payload?.shopTypes || {},
+        vehicleTemplates: payload?.vehicleTemplates || payload?.deliveryVehicles || {},
+        depots: payload?.depots || [],
+    };
+    const previousSelection = state.admin.pendingSelection || state.admin.selected;
+    state.admin.pendingSelection = null;
+    if (previousSelection && state.admin.shops.some((shop) => shop.identifier === previousSelection)) {
+        state.admin.selected = previousSelection;
+    } else {
+        state.admin.selected = null;
+    }
+    state.admin.createMode = false;
+    state.admin.dirty = false;
+
+    if (state.admin.view === 'editor') {
+        if (!state.admin.selected && state.admin.shops.length > 0) {
+            state.admin.selected = state.admin.shops[0].identifier;
+        }
+        const selectedShop = getAdminSelectedShop();
+        state.admin.draft = selectedShop ? buildAdminDraft(selectedShop) : null;
+        if (!state.admin.draft) {
+            state.admin.view = 'dashboard';
+        }
+    } else {
+        state.admin.draft = null;
+        state.admin.activeSection = 'general';
+    }
+};
+
+const updateAdminSaveButton = () => {
+    const button = document.querySelector('[data-action="admin-save"]');
+    if (button) {
+        const draft = state.admin.draft;
+        let canSave = false;
+        if (state.admin.createMode) {
+            const normalizedId = normalizeIdentifier(draft?.identifier || '');
+            canSave = Boolean(draft && normalizedId && draft.label && draft.type);
+        } else {
+            canSave = Boolean(draft) && state.admin.dirty;
+        }
+        button.classList.toggle('disabled', !canSave);
+        button.disabled = !canSave;
+    }
+};
+
+const updateAdminActionButtons = () => {
+    const startButton = document.querySelector('[data-action="admin-start-create"]');
+    if (startButton) {
+        startButton.classList.toggle('hidden', state.admin.createMode);
+    }
+    const cancelButton = document.querySelector('[data-action="admin-cancel-create"]');
+    if (cancelButton) {
+        cancelButton.classList.toggle('hidden', !state.admin.createMode);
     }
 };
 
@@ -1249,6 +1682,15 @@ const renderAdminList = () => {
         `;
         container.appendChild(button);
     });
+    markAdminDirty();
+    renderAdminDetail();
+};
+
+const removeInventoryItem = (index) => {
+    if (!state.admin.draft || !Array.isArray(state.admin.draft.inventory)) return;
+    state.admin.draft.inventory.splice(index, 1);
+    markAdminDirty();
+    renderAdminDetail();
 };
 
 const renderAdminDashboard = (container) => {
@@ -1311,8 +1753,7 @@ const renderAdminSectionNav = (sections) => {
             ${sections.map((section) => `
                 <button type="button"
                     class="admin-section-nav__item ${state.admin.activeSection === section.key ? 'active' : ''}"
-                    data-action="admin-scroll-section"
-                    data-target="admin-section-${section.key}"
+                    data-action="admin-switch-section"
                     data-section="${section.key}">
                     ${escapeHtml(section.title)}
                 </button>
@@ -1610,14 +2051,47 @@ const renderAdminDetail = () => {
         <button type="button" class="btn secondary" data-action="add-route">+ Route hinzufügen</button>
     `);
 
+    if (!sections.length) {
+        container.innerHTML = '<div class="admin-empty">Keine Abschnitte verfügbar.</div>';
+        renderAdminSectionNav([]);
+        updateAdminSaveButton();
+        return;
+    }
+
+    if (!sections.some((section) => section.key === state.admin.activeSection)) {
+        state.admin.activeSection = sections[0].key;
+    }
+
+    const activeIndex = Math.max(0, sections.findIndex((section) => section.key === state.admin.activeSection));
+    const activeSection = sections[activeIndex] || sections[0];
+    state.admin.activeSection = activeSection.key;
+
+    const totalSections = sections.length;
+    const previousSection = activeIndex > 0 ? sections[activeIndex - 1] : null;
+    const nextSection = activeIndex < totalSections - 1 ? sections[activeIndex + 1] : null;
+
+    const prevButton = previousSection
+        ? `<button type="button" class="btn ghost" data-action="admin-switch-section" data-section="${previousSection.key}">Zurück</button>`
+        : '<button type="button" class="btn ghost" data-action="admin-switch-section" disabled>Zurück</button>';
+    const nextButton = nextSection
+        ? `<button type="button" class="btn ghost" data-action="admin-switch-section" data-section="${nextSection.key}">Weiter</button>`
+        : '<button type="button" class="btn ghost" data-action="admin-switch-section" disabled>Weiter</button>';
+
     container.innerHTML = `
         <div class="admin-form">
-            ${sections.map((section) => `
-                <section id="admin-section-${section.key}" class="admin-section">
-                    <h3>${escapeHtml(section.title)}</h3>
-                    ${section.body}
-                </section>
-            `).join('')}
+            <header class="admin-section-header">
+                <div class="admin-section-header__title">
+                    <span class="admin-section-step">Bereich ${activeIndex + 1} / ${totalSections}</span>
+                    <h3>${escapeHtml(activeSection.title)}</h3>
+                </div>
+                <div class="admin-section-header__actions">
+                    ${prevButton}
+                    ${nextButton}
+                </div>
+            </header>
+            <section id="admin-section-${activeSection.key}" class="admin-section admin-section--active">
+                ${activeSection.body}
+            </section>
         </div>
     `;
 
@@ -2011,6 +2485,7 @@ const handleAdminClick = async (event) => {
     const el = event.target.closest('[data-action]');
     if (!el) return;
     const action = el.dataset.action;
+    if (typeof el.disabled === 'boolean' && el.disabled) return;
     if (action === 'select-shop') {
         const identifier = el.dataset.identifier;
         if (identifier) {
@@ -2098,24 +2573,11 @@ const handleAdminClick = async (event) => {
     } else if (action === 'remove-vehicle') {
         const index = Number(el.dataset.index);
         if (Number.isInteger(index)) removeVehicle(index);
-    } else if (action === 'admin-scroll-section') {
+    } else if (action === 'admin-switch-section') {
         const sectionKey = el.dataset.section;
-        const targetId = el.dataset.target;
-        if (sectionKey) {
-            state.admin.activeSection = sectionKey;
-            const nav = document.getElementById('admin-section-nav');
-            if (nav) {
-                nav.querySelectorAll('[data-section]').forEach((button) => {
-                    button.classList.toggle('active', button.dataset.section === sectionKey);
-                });
-            }
-        }
-        if (targetId) {
-            const section = document.getElementById(targetId);
-            if (section) {
-                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-        }
+        if (!sectionKey || sectionKey === state.admin.activeSection) return;
+        state.admin.activeSection = sectionKey;
+        renderAdminDetail();
     } else if (action === 'capture-coords') {
         const coords = await fetchCurrentPosition();
         if (coords && state.admin.draft) {
@@ -2510,6 +2972,26 @@ const bindEvents = () => {
                 const vehicle = target.dataset.vehicle;
                 if (!vehicle) return;
                 send('unlockVehicle', { vehicle });
+            }
+        });
+    }
+
+    const managementSidebar = document.getElementById('management-sidebar');
+    if (managementSidebar) {
+        managementSidebar.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-action]');
+            if (!button) return;
+            const action = button.dataset.action;
+            if (action === 'goto-orders') {
+                const targetTab = button.dataset.tab || 'deliveries';
+                state.managementTab = targetTab;
+                renderManagementTabs();
+                renderManagementPanel();
+            } else if (action === 'start-delivery') {
+                const deliveryId = button.dataset.delivery;
+                if (!deliveryId) return;
+                const vehicle = button.dataset.vehicle || null;
+                send('startDelivery', { deliveryId, vehicle });
             }
         });
     }

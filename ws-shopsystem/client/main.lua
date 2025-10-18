@@ -237,6 +237,13 @@ RegisterNUICallback('withdraw', function(data, cb)
     cb('ok')
 end)
 
+RegisterNUICallback('unlockVehicle', function(data, cb)
+    if not WSShopClient.ActiveShop then cb('error') return end
+    if not data or not data.vehicle then cb('error') return end
+    TriggerServerEvent('ws-shopsystem:server:unlockVehicle', WSShopClient.ActiveShop.identifier, data.vehicle)
+    cb('ok')
+end)
+
 RegisterNUICallback('hireEmployee', function(data, cb)
     if not WSShopClient.ActiveShop then cb('error') return end
     TriggerServerEvent('ws-shopsystem:server:hireEmployee', WSShopClient.ActiveShop.identifier, data.citizenid, data.role, data.wage)
