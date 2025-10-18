@@ -140,6 +140,46 @@ local function SaveMetadata(shop)
     })
 end
 
+local function ResolveCreditLimit(shop)
+    if not shop then return 0 end
+    local limit = tonumber(shop.creditLimit or 0) or 0
+    local metadata = shop.metadata
+    if type(metadata) == 'table' then
+        local finance = metadata.finance
+        if type(finance) == 'table' then
+            local custom = tonumber(finance.creditLimit or finance.credit_limit)
+            if custom and custom > 0 then
+                limit = math.max(limit, custom)
+            end
+        end
+        local fallback = tonumber(metadata.creditLimit or metadata.credit_limit)
+        if fallback and fallback > 0 then
+            limit = math.max(limit, fallback)
+        end
+    end
+    local levelConfig = Config.Levels[shop.level or 1]
+    if levelConfig and levelConfig.credit then
+        limit = math.max(limit, levelConfig.credit)
+    end
+    limit = math.max(0, limit)
+    shop.creditLimit = limit
+    if limit > 0 and (shop.creditUsed or 0) > limit then
+        shop.creditUsed = limit
+    elseif limit <= 0 and (shop.creditUsed or 0) > 0 then
+        shop.creditUsed = math.max(0, shop.creditUsed or 0)
+    end
+    return limit
+end
+
+local function PersistCredit(shop)
+    if not shop or not shop.id then return end
+    MySQL.update.await('UPDATE ws_shops SET credit_limit = ?, credit_used = ?, updated_at = NOW() WHERE id = ?', {
+        shop.creditLimit or 0,
+        shop.creditUsed or 0,
+        shop.id,
+    })
+end
+
 local function EncodeCoords(value)
     if type(value) == 'table' and value.x then
         return json.encode(value)
@@ -963,6 +1003,7 @@ end
 local function PrepareShopPayload(shop, options)
     options = options or {}
 
+    ResolveCreditLimit(shop)
     local deliveryVehicles = {}
     local vehicleMap = GetVehicleMap(shop)
     for key, vehicle in pairs(vehicleMap) do
@@ -990,6 +1031,8 @@ local function PrepareShopPayload(shop, options)
         level = shop.level,
         xp = shop.xp,
         balance = shop.balance,
+        creditLimit = shop.creditLimit or 0,
+        creditUsed = shop.creditUsed or 0,
         purchasePrice = shop.purchasePrice,
         sellPrice = shop.sellPrice,
         discount = shop.discount,
@@ -1210,11 +1253,27 @@ function WSShops.AddXP(shop, xp, reason)
     local oldLevel = shop.level
     shop.xp = (shop.xp or 0) + xp
     shop.level = Utils.GetLevelFromXP(shop.xp)
-    MySQL.update.await('UPDATE ws_shops SET xp = ?, level = ? WHERE id = ?', {
-        shop.xp,
-        shop.level,
-        shop.id,
-    })
+    local previousLimit = shop.creditLimit or 0
+    local previousUsed = shop.creditUsed or 0
+    local newLimit = ResolveCreditLimit(shop)
+    local newUsed = shop.creditUsed or 0
+
+    if newLimit ~= previousLimit or newUsed ~= previousUsed then
+        MySQL.update.await('UPDATE ws_shops SET xp = ?, level = ?, credit_limit = ?, credit_used = ? WHERE id = ?', {
+            shop.xp,
+            shop.level,
+            newLimit,
+            newUsed,
+            shop.id,
+        })
+    else
+        MySQL.update.await('UPDATE ws_shops SET xp = ?, level = ? WHERE id = ?', {
+            shop.xp,
+            shop.level,
+            shop.id,
+        })
+    end
+    WSShops.UpdateCache(shop)
     if shop.level > oldLevel then
         TriggerEvent('ws-shopsystem:server:shopLevelUp', shop, oldLevel, shop.level, reason)
     end
@@ -1633,7 +1692,13 @@ RegisterNetEvent('ws-shopsystem:server:deposit', function(identifier, amount)
         return
     end
 
+    ResolveCreditLimit(shop)
     WSShops.UpdateBalance(shop, amount, 'deposit', { citizenid = Player.PlayerData.citizenid })
+    TriggerClientEvent('ws-shopsystem:client:shopUpdated', -1, shop.identifier, {
+        balance = shop.balance,
+        creditLimit = shop.creditLimit or 0,
+        creditUsed = shop.creditUsed or 0,
+    })
     Utils.Notify(src, Utils.Locale('success.finance_deposit', amount), 'success')
 end)
 
@@ -1655,9 +1720,109 @@ RegisterNetEvent('ws-shopsystem:server:withdraw', function(identifier, amount)
         return
     end
 
+    ResolveCreditLimit(shop)
     WSShops.UpdateBalance(shop, -amount, 'withdraw', { citizenid = Player.PlayerData.citizenid })
     Player.Functions.AddMoney(Config.BankingAccount, amount, 'ws-shop-withdraw')
+    TriggerClientEvent('ws-shopsystem:client:shopUpdated', -1, shop.identifier, {
+        balance = shop.balance,
+        creditLimit = shop.creditLimit or 0,
+        creditUsed = shop.creditUsed or 0,
+    })
     Utils.Notify(src, Utils.Locale('success.finance_withdraw', amount), 'success')
+end)
+
+RegisterNetEvent('ws-shopsystem:server:takeCredit', function(identifier, amount)
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return end
+    local shop = EnsureShopExists(identifier, src)
+    if not shop then return end
+
+    if not WSShops.PlayerHasRole(Player, shop, Config.FinanceAccessRoles) then
+        Utils.Notify(src, Utils.Locale('error.role_not_allowed'), 'error')
+        return
+    end
+
+    amount = math.floor(tonumber(amount) or 0)
+    if amount <= 0 then
+        Utils.Notify(src, Utils.Locale('error.invalid_amount'), 'error')
+        return
+    end
+
+    local limit = ResolveCreditLimit(shop)
+    if limit <= 0 then
+        Utils.Notify(src, Utils.Locale('error.credit_unavailable'), 'error')
+        return
+    end
+
+    local used = math.max(0, tonumber(shop.creditUsed) or 0)
+    if used + amount > limit then
+        Utils.Notify(src, Utils.Locale('error.credit_limit_reached'), 'error')
+        return
+    end
+
+    shop.creditUsed = used + amount
+    WSShops.UpdateBalance(shop, amount, 'credit_draw', {
+        citizenid = Player.PlayerData.citizenid,
+        creditAfter = shop.creditUsed,
+    })
+    PersistCredit(shop)
+    WSShops.UpdateCache(shop)
+
+    TriggerClientEvent('ws-shopsystem:client:shopUpdated', -1, shop.identifier, {
+        balance = shop.balance,
+        creditLimit = limit,
+        creditUsed = shop.creditUsed,
+    })
+    Utils.Notify(src, Utils.Locale('success.finance_credit_taken', amount), 'success')
+end)
+
+RegisterNetEvent('ws-shopsystem:server:repayCredit', function(identifier, amount)
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return end
+    local shop = EnsureShopExists(identifier, src)
+    if not shop then return end
+
+    if not WSShops.PlayerHasRole(Player, shop, Config.FinanceAccessRoles) then
+        Utils.Notify(src, Utils.Locale('error.role_not_allowed'), 'error')
+        return
+    end
+
+    amount = math.floor(tonumber(amount) or 0)
+    if amount <= 0 then
+        Utils.Notify(src, Utils.Locale('error.invalid_amount'), 'error')
+        return
+    end
+
+    local limit = ResolveCreditLimit(shop)
+    local used = math.max(0, tonumber(shop.creditUsed) or 0)
+    if used <= 0 then
+        Utils.Notify(src, Utils.Locale('error.credit_no_outstanding'), 'error')
+        return
+    end
+
+    local balance = math.max(0, tonumber(shop.balance) or 0)
+    local repayable = math.min(amount, used, balance)
+    if repayable <= 0 then
+        Utils.Notify(src, Utils.Locale('error.insufficient_funds'), 'error')
+        return
+    end
+
+    shop.creditUsed = used - repayable
+    WSShops.UpdateBalance(shop, -repayable, 'credit_repayment', {
+        citizenid = Player.PlayerData.citizenid,
+        creditAfter = shop.creditUsed,
+    })
+    PersistCredit(shop)
+    WSShops.UpdateCache(shop)
+
+    TriggerClientEvent('ws-shopsystem:client:shopUpdated', -1, shop.identifier, {
+        balance = shop.balance,
+        creditLimit = limit,
+        creditUsed = shop.creditUsed,
+    })
+    Utils.Notify(src, Utils.Locale('success.finance_credit_repaid', repayable), 'success')
 end)
 
 RegisterNetEvent('ws-shopsystem:server:hireEmployee', function(identifier, citizenid, role, wage)

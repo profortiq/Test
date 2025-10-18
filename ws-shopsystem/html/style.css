@@ -473,8 +473,8 @@ body.nui-active::before {
 #management-view {
     flex: 1;
     display: flex;
-    flex-direction: row-reverse;
-    gap: 28px;
+    flex-direction: column;
+    gap: 24px;
 }
 
 .management-content {
@@ -496,6 +496,113 @@ body.nui-active::before {
     width: 260px;
     display: flex;
     flex-direction: column;
+    gap: 16px;
+}
+
+.management-sidebar__section {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.management-sidebar__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.management-sidebar__header h4 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.management-sidebar__list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 420px;
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+.management-sidebar__empty {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.management-order {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.management-order__meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.9rem;
+}
+
+.management-order__title {
+    font-weight: 600;
+}
+
+.management-order__status {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.management-order__status--active {
+    background: rgba(96, 211, 148, 0.25);
+    color: #8ff7b9;
+}
+
+.management-order__status--pending {
+    background: rgba(255, 194, 71, 0.25);
+    color: #ffd98a;
+}
+
+.management-order__status--completed {
+    background: rgba(132, 196, 255, 0.25);
+    color: #c5e4ff;
+}
+
+.management-order__status--failed {
+    background: rgba(255, 99, 132, 0.25);
+    color: #ffb1c1;
+}
+
+.management-order__details {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.management-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.management-sidebar {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 16px;
 }
 
@@ -733,6 +840,68 @@ body.nui-active::before {
     gap: 10px;
 }
 
+.finance-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+}
+
+.finance-card {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 14px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.finance-card__label {
+    font-size: 0.8rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.finance-card__value {
+    font-size: 1.4rem;
+    font-weight: 600;
+}
+
+.finance-card__hint {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.65);
+}
+
+.finance-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+}
+
+.finance-actions form {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.finance-actions form input {
+    flex: 1;
+}
+
+.finance-actions form button {
+    white-space: nowrap;
+}
+
+.finance-hint {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+
 .inline-form {
     display: flex;
     gap: 10px;
@@ -805,7 +974,7 @@ body.nui-active::before {
 
 .stat-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 18px;
 }
 
@@ -1032,11 +1201,38 @@ body.nui-active::before {
     font-weight: 600;
 }
 
+.delivery-layout {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 18px;
+}
+
+.delivery-window {
+    background: rgba(0, 0, 0, 0.28);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.delivery-window__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.delivery-window__header h4 {
+    margin: 0;
+}
+
 .delivery-list {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    margin: 18px 0;
+    margin: 0;
 }
 
 .delivery-card {
@@ -1703,6 +1899,35 @@ body.nui-active::before {
     }
     .view {
         flex-direction: column;
+    }
+    #management-view {
+        flex-direction: column;
+    }
+    .management-content {
+        flex-direction: column;
+    }
+    .management-sidebar {
+        width: 100%;
+        order: -1;
+    }
+    .admin-detail__body {
+        grid-template-columns: 1fr;
+    }
+    .admin-section-nav {
+        position: static;
+        flex-direction: row;
+        flex-wrap: wrap;
+        padding: 12px;
+        gap: 6px;
+    }
+    .admin-section-nav__list {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .admin-section-nav__item {
+        flex: 1 1 150px;
+        justify-content: center;
     }
     #management-view {
         flex-direction: column;

@@ -94,6 +94,10 @@ Alle Einstellungen findest du in `config.lua`. Wichtige Bereiche:
 - Im Tab `Fahrzeuge` können Shopbesitzer die freigeschalteten Lieferfahrzeuge sehen und kaufen. Welche Modelle zur Auswahl stehen,
   definiert der Admin im Creator. Dort lassen sich Modellname (Spawncode), Preis, Mindestlevel, Kapazität, Kofferraum und
   Spritfaktor pro Shop speichern – komplett ohne Einträge in der `config.lua`.
+- Der Tab `Finanzen` zeigt jetzt Kontostand, Kreditrahmen, offene Beträge und verfügbare Mittel in einer Bank-ähnlichen Übersicht.
+  Einzahlungen, Auszahlungen, Kreditaufnahme und Tilgung werden direkt im Panel ausgelöst und sofort in der Datenbank verbucht.
+- `Aufträge` ist in eine Auftragsliste und ein Planungsfenster aufgeteilt. Start-Buttons stehen direkt bei jedem Auftrag bereit,
+  während die Erstellung unten rechts läuft – inklusive Kapazitätsanzeige und Fahrzeug-Checks.
 
 ### Liefermissionen
 1. Erstelle im Tab „Lieferungen“ eine manuelle Bestellung oder warte auf eine automatische, wenn Lagerbestand fällt.  

@@ -237,6 +237,18 @@ RegisterNUICallback('withdraw', function(data, cb)
     cb('ok')
 end)
 
+RegisterNUICallback('takeCredit', function(data, cb)
+    if not WSShopClient.ActiveShop then cb('error') return end
+    TriggerServerEvent('ws-shopsystem:server:takeCredit', WSShopClient.ActiveShop.identifier, data.amount)
+    cb('ok')
+end)
+
+RegisterNUICallback('repayCredit', function(data, cb)
+    if not WSShopClient.ActiveShop then cb('error') return end
+    TriggerServerEvent('ws-shopsystem:server:repayCredit', WSShopClient.ActiveShop.identifier, data.amount)
+    cb('ok')
+end)
+
 RegisterNUICallback('unlockVehicle', function(data, cb)
     if not WSShopClient.ActiveShop then cb('error') return end
     if not data or not data.vehicle then cb('error') return end

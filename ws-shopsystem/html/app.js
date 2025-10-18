@@ -366,28 +366,38 @@ const renderDashboardPanel = () => {
         return renderEmptyStatePanel('Kein Shop ausgewählt.');
     }
     const typeConfig = shop.typeConfig || {};
+    const creditLimit = Math.max(0, Number(shop.creditLimit || 0));
+    const creditUsed = Math.min(Math.max(0, Number(shop.creditUsed || 0)), creditLimit || Number.MAX_SAFE_INTEGER);
+    const creditAvailable = Math.max(0, creditLimit - creditUsed);
+
+    const statCards = [
+        { label: 'Shop Level', value: shop.level },
+        { label: 'Gesamt XP', value: shop.xp },
+        { label: 'Kontostand', value: currency(shop.balance) },
+    ];
+
+    if (creditLimit > 0) {
+        statCards.push({ label: 'Kreditrahmen', value: currency(creditLimit) });
+        statCards.push({ label: 'Offener Kredit', value: currency(creditUsed) });
+        statCards.push({ label: 'Verfügbar', value: currency(creditAvailable) });
+    } else {
+        statCards.push({ label: 'Kreditrahmen', value: 'Kein Kredit' });
+    }
+
+    statCards.push({ label: 'Aktiver Rabatt', value: `${shop.discount || 0}%` });
+
+    const statsHtml = statCards.map((entry) => `
+        <div class="stat-card">
+            <span class="label">${entry.label}</span>
+            <span class="value">${entry.value}</span>
+        </div>
+    `).join('');
+
     const panel = document.createElement('div');
     panel.classList.add('panel');
     panel.innerHTML = `
         <h3>Shop Übersicht</h3>
-        <div class="stat-grid">
-            <div class="stat-card">
-                <span class="label">Shop Level</span>
-                <span class="value">${shop.level}</span>
-            </div>
-            <div class="stat-card">
-                <span class="label">Gesamt XP</span>
-                <span class="value">${shop.xp}</span>
-            </div>
-            <div class="stat-card">
-                <span class="label">Kontostand</span>
-                <span class="value">${currency(shop.balance)}</span>
-            </div>
-            <div class="stat-card">
-                <span class="label">Aktiver Rabatt</span>
-                <span class="value">${shop.discount || 0}%</span>
-            </div>
-        </div>
+        <div class="stat-grid">${statsHtml}</div>
         <div class="tag">Shop Typ: ${typeConfig.label || shop.type}</div>
     `;
     const heading = panel.querySelector('h3');
@@ -580,31 +590,45 @@ const renderDeliveriesPanel = () => {
     const deliveries = state.shop.deliveries || [];
     const vehicles = state.shop.deliveryVehicles || {};
     panel.innerHTML = `
-        <h3>Lieferaufträge</h3>
-        <div class="delivery-list">
-            ${deliveries.length === 0 ? '<div class="chart-empty">Keine offenen Lieferaufträge.</div>' : ''}
+        <h3>Lieferverwaltung</h3>
+        <div class="delivery-layout">
+            <section class="delivery-window">
+                <div class="delivery-window__header">
+                    <h4>Auftragsliste</h4>
+                    ${deliveries.length ? `<span class="chip">${deliveries.length} offen</span>` : ''}
+                </div>
+                <div class="delivery-list" data-role="delivery-list">
+                    ${deliveries.length === 0 ? '<div class="chart-empty">Keine offenen Lieferaufträge.</div>' : ''}
+                </div>
+            </section>
+            <section class="delivery-window">
+                <div class="delivery-window__header">
+                    <h4>Neue Lieferung planen</h4>
+                </div>
+                <form data-action="create-delivery" class="delivery-form">
+                    <label>Bezeichnung</label>
+                    <input type="text" name="label" placeholder="Kommentar">
+                    <label>Fahrzeug</label>
+                    <select name="vehicle" required ${getUnlockedVehicles().length ? '' : 'disabled'}>
+                        <option value="">Fahrzeug wählen</option>
+                        ${Object.entries(vehicles).map(([key, config]) => {
+                            const unlocked = isVehicleUnlocked(key);
+                            const meetsLevel = (state.shop?.level || 1) >= (config.minLevel || 1);
+                            const disabled = !unlocked || !meetsLevel;
+                            const hint = !unlocked ? ' - gesperrt' : (!meetsLevel ? ` - Level ${config.minLevel}` : '');
+                            return `<option value="${key}" ${disabled ? 'disabled' : ''}>${config.label} (${config.capacity})${hint}</option>`;
+                        }).join('')}
+                    </select>
+                    <div class="delivery-items" data-role="delivery-items"></div>
+                    <button class="btn secondary" type="button" data-role="add-delivery-item">+ Artikel hinzufügen</button>
+                    <div class="capacity-hint">Kapazität: <span data-role="capacity-info">0</span></div>
+                    <button class="btn primary" type="submit">Auftrag erstellen</button>
+                </form>
+            </section>
         </div>
-        <form data-action="create-delivery" class="delivery-form">
-            <h4>Neue Lieferung planen</h4>
-            <label>Bezeichnung</label>
-            <input type="text" name="label" placeholder="Kommentar">
-            <label>Fahrzeug</label>
-            <select name="vehicle" required ${getUnlockedVehicles().length ? '' : 'disabled'}>
-                <option value="">Fahrzeug wählen</option>
-                ${Object.entries(vehicles).map(([key, config]) => {
-                    const unlocked = isVehicleUnlocked(key);
-                    const meetsLevel = (state.shop?.level || 1) >= (config.minLevel || 1);
-                    return `<option value="${key}" ${!unlocked ? 'disabled' : ''}>${config.label} (${config.capacity})${!unlocked ? ' - gesperrt' : ''}</option>`;
-                }).join('')}
-            </select>
-            <div class="delivery-items" data-role="delivery-items"></div>
-            <button class="btn secondary" type="button" data-role="add-delivery-item">+ Artikel hinzufügen</button>
-            <div class="capacity-hint">Kapazität: <span data-role="capacity-info">0</span></div>
-            <button class="btn primary" type="submit">Auftrag erstellen</button>
-        </form>
     `;
 
-    const list = panel.querySelector('.delivery-list');
+    const list = panel.querySelector('[data-role="delivery-list"]');
     deliveries.forEach((delivery) => {
         const vehicle = vehicles[delivery.vehicle_model] || {};
         const unlocked = isVehicleUnlocked(delivery.vehicle_model);
@@ -640,7 +664,9 @@ const renderDeliveriesPanel = () => {
                     : '<span class="delivery-progress">Aktiv</span>'}
             </div>
         `;
-        list.appendChild(card);
+        if (list) {
+            list.appendChild(card);
+        }
     });
 
     setupDeliveryForm(panel);
@@ -767,18 +793,48 @@ const setupDeliveryForm = (panel) => {
 const renderFinancePanel = () => {
     const panel = document.createElement('div');
     panel.classList.add('panel');
+    const balance = Number(state.shop?.balance || 0);
+    const creditLimit = Math.max(0, Number(state.shop?.creditLimit || 0));
+    const creditUsed = Math.min(Math.max(0, Number(state.shop?.creditUsed || 0)), creditLimit || Number.MAX_SAFE_INTEGER);
+    const creditAvailable = Math.max(0, creditLimit - creditUsed);
     panel.innerHTML = `
         <h3>Finanzen</h3>
+        <div class="finance-summary">
+            <div class="finance-card">
+                <span class="finance-card__label">Kontostand</span>
+                <span class="finance-card__value">${currency(balance)}</span>
+            </div>
+            <div class="finance-card">
+                <span class="finance-card__label">Kreditrahmen</span>
+                <span class="finance-card__value">${creditLimit > 0 ? currency(creditLimit) : 'Kein Kredit'}</span>
+                ${creditLimit > 0 ? `<span class="finance-card__hint">Verfügbar: ${currency(creditAvailable)}</span>` : ''}
+            </div>
+            <div class="finance-card">
+                <span class="finance-card__label">Offener Kredit</span>
+                <span class="finance-card__value">${creditUsed > 0 ? currency(creditUsed) : '$0'}</span>
+            </div>
+        </div>
         <div class="finance-actions">
             <form data-action="deposit">
                 <input type="number" name="amount" placeholder="Einzahlen" min="1">
                 <button class="btn secondary" type="submit">Einzahlen</button>
             </form>
             <form data-action="withdraw">
-                <input type="number" name="amount" placeholder="Auszahlen" min="1">
+                <input type="number" name="amount" placeholder="Auszahlen" min="1" max="${Math.max(0, Math.floor(balance))}">
                 <button class="btn secondary" type="submit">Auszahlen</button>
             </form>
         </div>
+        <div class="finance-actions">
+            <form data-action="take-credit">
+                <input type="number" name="amount" placeholder="Kredit aufnehmen" min="1" max="${Math.max(0, Math.floor(creditAvailable))}">
+                <button class="btn primary" type="submit">Kredit nehmen</button>
+            </form>
+            <form data-action="repay-credit">
+                <input type="number" name="amount" placeholder="Kredit tilgen" min="1" max="${Math.max(0, Math.floor(Math.min(balance, creditUsed)))}">
+                <button class="btn primary" type="submit">Kredit tilgen</button>
+            </form>
+        </div>
+        <p class="finance-hint">Transaktionen wirken sich sofort auf den Firmenkontostand aus. Kreditrahmen richtet sich nach Shop-Level oder individuellen Einstellungen.</p>
     `;
     return panel;
 };
@@ -2615,6 +2671,14 @@ const bindEvents = () => {
             } else if (action === 'deposit' || action === 'withdraw') {
                 const amount = Number(form.querySelector('input').value);
                 send(action, { amount });
+                form.reset();
+            } else if (action === 'take-credit' || action === 'repay-credit') {
+                const input = form.querySelector('input');
+                const amount = Number(input?.value || 0);
+                if (!Number.isFinite(amount) || amount <= 0) {
+                    return;
+                }
+                send(action === 'take-credit' ? 'takeCredit' : 'repayCredit', { amount });
                 form.reset();
             }
         });

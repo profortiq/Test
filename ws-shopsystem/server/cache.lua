@@ -371,6 +371,40 @@ local function BuildShop(row)
         end
     end
 
+    local creditLimit = tonumber(row.credit_limit) or 0
+    local metadataCredit = 0
+    if type(metadata) == 'table' then
+        local financeMeta = metadata.finance
+        if type(financeMeta) == 'table' then
+            metadataCredit = tonumber(financeMeta.creditLimit or financeMeta.credit_limit) or 0
+        end
+        if (metadataCredit or 0) <= 0 then
+            metadataCredit = tonumber(metadata.creditLimit or metadata.credit_limit) or 0
+        end
+    end
+    local levelConfig = Config.Levels[row.level] or {}
+    local levelCredit = tonumber(levelConfig.credit) or 0
+    creditLimit = math.max(0, creditLimit, metadataCredit or 0, levelCredit)
+
+    local creditUsed = math.max(0, tonumber(row.credit_used) or 0)
+    if creditLimit > 0 and creditUsed > creditLimit then
+        creditUsed = creditLimit
+    end
+
+    if creditLimit ~= (tonumber(row.credit_limit) or 0) then
+        MySQL.update.await('UPDATE ws_shops SET credit_limit = ?, updated_at = NOW() WHERE id = ?', {
+            creditLimit,
+            row.id,
+        })
+    end
+
+    if creditUsed ~= (tonumber(row.credit_used) or 0) then
+        MySQL.update.await('UPDATE ws_shops SET credit_used = ?, updated_at = NOW() WHERE id = ?', {
+            creditUsed,
+            row.id,
+        })
+    end
+
     local shop = {
         id = row.id,
         identifier = identifier,
@@ -392,6 +426,8 @@ local function BuildShop(row)
         inventory = inventory,
         employees = employees,
         deliveries = deliveries,
+        creditLimit = creditLimit,
+        creditUsed = creditUsed,
     }
 
     return shop

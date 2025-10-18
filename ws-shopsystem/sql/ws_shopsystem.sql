@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS `ws_shops` (
     `purchase_price` INT(11) NOT NULL DEFAULT 0,
     `sell_price` INT(11) NOT NULL DEFAULT 0,
     `discount` INT(11) NOT NULL DEFAULT 0,
+    `credit_limit` INT(11) NOT NULL DEFAULT 0,
+    `credit_used` INT(11) NOT NULL DEFAULT 0,
     `webhook` TEXT DEFAULT NULL,
     `metadata` LONGTEXT DEFAULT NULL,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
