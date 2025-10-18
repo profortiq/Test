@@ -483,15 +483,18 @@ body.nui-active::before {
     flex-direction: column;
     gap: 24px;
     min-height: 0;
+    height: 100%;
+    justify-content: flex-start;
 }
 
 .management-content {
     flex: 1;
     display: flex;
-    align-items: stretch;
+    align-items: flex-start;
     gap: 24px;
     padding-top: 8px;
     min-height: 0;
+    height: 100%;
 }
 
 .management-main {
@@ -501,6 +504,7 @@ body.nui-active::before {
     display: flex;
     flex-direction: column;
     gap: 24px;
+    height: 100%;
 }
 
 .management-main > .panel {
@@ -508,6 +512,8 @@ body.nui-active::before {
     display: flex;
     flex-direction: column;
     width: 100%;
+    min-height: 0;
+    overflow: auto;
 }
 
 .management-sidebar {
@@ -655,10 +661,11 @@ body.nui-active::before {
     display: flex;
     flex-direction: row;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 18px;
-    padding: 12px 0 4px;
+    padding: 4px 0 12px;
     width: 100%;
+    flex-wrap: wrap;
 }
 
 .management-tab {
@@ -703,7 +710,7 @@ body.nui-active::before {
 .management-tab.active,
 .management-tab:hover {
     color: #ffeef3;
-    transform: translateX(-4px);
+    transform: translateY(-2px);
 }
 
 .management-tab.active .tab-icon,
@@ -721,6 +728,7 @@ body.nui-active::before {
     display: flex;
     flex-direction: column;
     gap: 16px;
+    min-height: 0;
 }
 
 .panel h3 {
@@ -1034,6 +1042,10 @@ body.nui-active::before {
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 18px;
     margin-top: 16px;
+    min-height: 0;
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-right: 6px;
 }
 
 .vehicle-card {
@@ -1116,8 +1128,10 @@ body.nui-active::before {
 
 .delivery-layout {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 18px;
+    grid-template-columns: minmax(360px, 1fr) minmax(320px, 0.9fr);
+    gap: 20px;
+    align-items: stretch;
+    grid-auto-rows: minmax(0, 1fr);
 }
 
 .delivery-window {
@@ -1128,6 +1142,38 @@ body.nui-active::before {
     display: flex;
     flex-direction: column;
     gap: 16px;
+    min-height: 0;
+}
+
+.delivery-window--list {
+    overflow: hidden;
+}
+
+.delivery-window--list .delivery-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+.delivery-window--list .delivery-list::-webkit-scrollbar,
+.delivery-window--form .delivery-form::-webkit-scrollbar,
+.vehicle-grid::-webkit-scrollbar {
+    width: 6px;
+}
+
+.delivery-window--list .delivery-list::-webkit-scrollbar-thumb,
+.delivery-window--form .delivery-form::-webkit-scrollbar-thumb,
+.vehicle-grid::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+}
+
+.delivery-window--form .delivery-form {
+    overflow-y: auto;
+    max-height: 100%;
+    padding-right: 6px;
+    flex: 1;
 }
 
 .delivery-window__header {
@@ -1146,6 +1192,7 @@ body.nui-active::before {
     flex-direction: column;
     gap: 16px;
     margin: 0;
+    min-height: 0;
 }
 
 .delivery-card {
@@ -1822,6 +1869,9 @@ body.nui-active::before {
     }
     .management-content {
         flex-direction: column;
+    }
+    .delivery-layout {
+        grid-template-columns: 1fr;
     }
     .management-sidebar {
         width: 100%;

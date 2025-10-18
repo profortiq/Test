@@ -592,16 +592,7 @@ const renderDeliveriesPanel = () => {
     panel.innerHTML = `
         <h3>Lieferverwaltung</h3>
         <div class="delivery-layout">
-            <section class="delivery-window">
-                <div class="delivery-window__header">
-                    <h4>Auftragsliste</h4>
-                    ${deliveries.length ? `<span class="chip">${deliveries.length} offen</span>` : ''}
-                </div>
-                <div class="delivery-list" data-role="delivery-list">
-                    ${deliveries.length === 0 ? '<div class="chart-empty">Keine offenen Lieferaufträge.</div>' : ''}
-                </div>
-            </section>
-            <section class="delivery-window">
+            <section class="delivery-window delivery-window--form">
                 <div class="delivery-window__header">
                     <h4>Neue Lieferung planen</h4>
                 </div>
@@ -624,6 +615,15 @@ const renderDeliveriesPanel = () => {
                     <div class="capacity-hint">Kapazität: <span data-role="capacity-info">0</span></div>
                     <button class="btn primary" type="submit">Auftrag erstellen</button>
                 </form>
+            </section>
+            <section class="delivery-window delivery-window--list">
+                <div class="delivery-window__header">
+                    <h4>Auftragsliste</h4>
+                    ${deliveries.length ? `<span class="chip">${deliveries.length} offen</span>` : ''}
+                </div>
+                <div class="delivery-list" data-role="delivery-list">
+                    ${deliveries.length === 0 ? '<div class="chart-empty">Keine offenen Lieferaufträge.</div>' : ''}
+                </div>
             </section>
         </div>
     `;
