@@ -403,6 +403,13 @@ local function CacheShop(shop)
 end
 
 function WSShops.DB.LoadAll()
+    if WSShops.Migrations and WSShops.Migrations.EnsureSchema then
+        local ok, err = pcall(WSShops.Migrations.EnsureSchema)
+        if not ok then
+            print(('^1[ws-shopsystem]^7 Failed to ensure schema: %s'):format(err))
+        end
+    end
+
     Cache.ShopsById = {}
     Cache.ShopsByIdentifier = {}
 
