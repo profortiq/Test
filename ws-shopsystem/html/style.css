@@ -1823,6 +1823,64 @@ body.nui-active::before {
         flex: 1 1 150px;
         justify-content: center;
     }
+    #management-view {
+        flex-direction: column;
+    }
+    .management-content {
+        flex-direction: column;
+    }
+    .management-sidebar {
+        width: 100%;
+        order: -1;
+    }
+    .admin-detail__body {
+        grid-template-columns: 1fr;
+    }
+    .admin-section-nav {
+        position: static;
+        flex-direction: row;
+        flex-wrap: wrap;
+        padding: 12px;
+        gap: 6px;
+    }
+    .admin-section-nav__list {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .admin-section-nav__item {
+        flex: 1 1 150px;
+        justify-content: center;
+    }
+    #management-view {
+        flex-direction: column;
+    }
+    .management-content {
+        flex-direction: column;
+    }
+    .management-sidebar {
+        width: 100%;
+        order: -1;
+    }
+    .admin-detail__body {
+        grid-template-columns: 1fr;
+    }
+    .admin-section-nav {
+        position: static;
+        flex-direction: row;
+        flex-wrap: wrap;
+        padding: 12px;
+        gap: 6px;
+    }
+    .admin-section-nav__list {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .admin-section-nav__item {
+        flex: 1 1 150px;
+        justify-content: center;
+    }
     .sidebar,
     .cart {
         width: 100%;
