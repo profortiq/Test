@@ -15,6 +15,12 @@ local Translations = {
         delivery_failed = 'Lieferung fehlgeschlagen.',
         shop_not_for_sale = 'Dieser Shop kann nicht gekauft werden.',
         shop_unowned = 'Dieser Shop wurde noch nicht gekauft.',
+        delivery_capacity = 'Fahrzeugkapazitaet ueberschritten.',
+        delivery_vehicle_locked = 'Dieses Fahrzeug ist fuer diesen Shop gesperrt.',
+        admin_payload_failed = 'Shopdaten konnten nicht geladen werden.',
+        credit_unavailable = 'Dieser Shop verfuegt ueber keinen Kreditrahmen.',
+        credit_limit_reached = 'Kreditrahmen bereits ausgeschoepft.',
+        credit_no_outstanding = 'Kein offener Kredit vorhanden.',
     },
     success = {
         shop_purchased = 'Du bist jetzt Besitzer von %s.',
@@ -29,7 +35,10 @@ local Translations = {
         stock_restocked = 'Lagerbestand aufgefuellt.',
         finance_withdraw = '$%s aus Firmenkonto ausgezahlt.',
         finance_deposit = '$%s auf Firmenkonto eingezahlt.',
+        finance_credit_taken = 'Kredit ueber $%s aufgenommen.',
+        finance_credit_repaid = '$%s Kredit getilgt.',
         level_up = 'Shop-Level %s erreicht!',
+        shop_saved = 'Shop-Einstellungen gespeichert.',
     },
     info = {
         press_to_open = 'Druecke %s um %s zu oeffnen',
