@@ -587,7 +587,9 @@ const renderEmployeesPanel = () => {
 const renderDeliveriesPanel = () => {
     const panel = document.createElement('div');
     panel.classList.add('panel');
-    const deliveries = state.shop.deliveries || [];
+    const deliveries = Array.isArray(state.shop.deliveries)
+        ? state.shop.deliveries
+        : Object.values(state.shop.deliveries || {});
     const vehicles = state.shop.deliveryVehicles || {};
     panel.innerHTML = `
         <h3>Lieferverwaltung</h3>
@@ -630,10 +632,13 @@ const renderDeliveriesPanel = () => {
 
     const list = panel.querySelector('[data-role="delivery-list"]');
     deliveries.forEach((delivery) => {
+        const deliveryItems = Array.isArray(delivery.items)
+            ? delivery.items
+            : Object.values(delivery.items || {});
         const vehicle = vehicles[delivery.vehicle_model] || {};
         const unlocked = isVehicleUnlocked(delivery.vehicle_model);
-        const totalQuantity = (delivery.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-        const itemsHtml = (delivery.items || []).map((item) => `
+        const totalQuantity = deliveryItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+        const itemsHtml = deliveryItems.map((item) => `
             <li>
                 <span>${item.label || item.item}</span>
                 <span class="delivery-item-qty">${item.quantity}</span>

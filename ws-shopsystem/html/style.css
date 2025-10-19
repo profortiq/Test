@@ -231,6 +231,9 @@ body.nui-active::before {
 #management-view {
     flex-direction: column;
     align-items: stretch;
+    justify-content: flex-start;
+    width: 100%;
+    height: 100%;
 }
 
 .sidebar {
@@ -490,10 +493,12 @@ body.nui-active::before {
 .management-content {
     flex: 1;
     display: flex;
-    align-items: flex-start;
+    align-items: stretch;
+    justify-content: space-between;
     gap: 24px;
     padding-top: 8px;
     min-height: 0;
+    width: 100%;
     height: 100%;
 }
 
@@ -505,6 +510,7 @@ body.nui-active::before {
     flex-direction: column;
     gap: 24px;
     height: 100%;
+    width: 100%;
 }
 
 .management-main > .panel {
@@ -513,6 +519,7 @@ body.nui-active::before {
     flex-direction: column;
     width: 100%;
     min-height: 0;
+    max-height: 100%;
     overflow: auto;
 }
 
