@@ -1412,6 +1412,8 @@ const renderAdminList = () => {
         `;
         container.appendChild(button);
     });
+    markAdminDirty();
+    renderAdminDetail();
 };
 
 const renderAdminDashboard = (container) => {
