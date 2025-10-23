@@ -1277,6 +1277,38 @@ body.nui-active::before {
     font-weight: 600;
 }
 
+.delivery-route {
+    margin-top: 12px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 12px;
+    display: grid;
+    gap: 8px;
+}
+
+.delivery-route strong {
+    font-weight: 600;
+}
+
+.delivery-route ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+}
+
+.delivery-route li {
+    font-size: 0.85rem;
+    opacity: 0.8;
+}
+
+.delivery-route p {
+    margin: 0;
+    font-size: 0.85rem;
+    opacity: 0.75;
+}
+
 .delivery-actions {
     display: flex;
     justify-content: flex-end;

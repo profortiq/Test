@@ -148,6 +148,17 @@ const getInventoryItems = () => {
     return items;
 };
 
+const getRoutes = () => {
+    const creator = state.shop?.metadata?.creator;
+    if (!creator || !Array.isArray(creator.routes)) return [];
+    return creator.routes.map((route, index) => ({
+        id: route.id ?? index + 1,
+        label: route.label || `Route ${index + 1}`,
+        points: Array.isArray(route.points) ? route.points : [],
+        index,
+    }));
+};
+
 const getItemById = (id) => {
     const categories = getCategories();
     for (const category of categories) {
@@ -591,6 +602,7 @@ const renderDeliveriesPanel = () => {
         ? state.shop.deliveries
         : Object.values(state.shop.deliveries || {});
     const vehicles = state.shop.deliveryVehicles || {};
+    const routes = getRoutes();
     panel.innerHTML = `
         <h3>Lieferverwaltung</h3>
         <div class="delivery-layout">
@@ -612,6 +624,15 @@ const renderDeliveriesPanel = () => {
                             return `<option value="${key}" ${disabled ? 'disabled' : ''}>${config.label} (${config.capacity})${hint}</option>`;
                         }).join('')}
                     </select>
+                    ${routes.length ? `
+                        <label>Route</label>
+                        <select name="route">
+                            <option value="">Route wählen</option>
+                            ${routes.map((route, idx) => `
+                                <option value="${route.id ?? (idx + 1)}">${escapeHtml(route.label)}${route.points.length ? ` (${route.points.length} Stopps)` : ''}</option>
+                            `).join('')}
+                        </select>
+                    ` : ''}
                     <div class="delivery-items" data-role="delivery-items"></div>
                     <button class="btn secondary" type="button" data-role="add-delivery-item">+ Artikel hinzufügen</button>
                     <div class="capacity-hint">Kapazität: <span data-role="capacity-info">0</span></div>
@@ -644,6 +665,20 @@ const renderDeliveriesPanel = () => {
                 <span class="delivery-item-qty">${item.quantity}</span>
             </li>
         `).join('');
+        const routeInfo = delivery.metadata?.route;
+        const routeStops = Array.isArray(routeInfo?.points) ? routeInfo.points : [];
+        const routeHtml = routeInfo ? `
+            <div class="delivery-route">
+                <strong>Route: ${escapeHtml(routeInfo.label || 'Lieferroute')}</strong>
+                ${routeStops.length ? `
+                    <ul>
+                        ${routeStops.map((point, index) => `
+                            <li>${escapeHtml(point.label || `Stopp ${index + 1}`)}</li>
+                        `).join('')}
+                    </ul>
+                ` : '<p>Kein detaillierter Verlauf.</p>'}
+            </div>
+        ` : '';
         const isPending = delivery.status === 'pending';
         const card = document.createElement('div');
         card.classList.add('delivery-card');
@@ -662,6 +697,7 @@ const renderDeliveriesPanel = () => {
                 <ul class="delivery-items-list">
                     ${itemsHtml || '<li>Keine Artikel</li>'}
                 </ul>
+                ${routeHtml}
             </div>
             <div class="delivery-actions">
                 ${isPending
@@ -2648,6 +2684,7 @@ const bindEvents = () => {
             } else if (action === 'create-delivery') {
                 const vehicle = form.querySelector('select[name="vehicle"]')?.value;
                 const label = form.querySelector('input[name="label"]')?.value?.trim() || '';
+                const route = form.querySelector('select[name="route"]')?.value || '';
                 const rows = Array.from(form.querySelectorAll('[data-role="delivery-row"]'));
                 const items = rows.map((row) => {
                     const select = row.querySelector('[data-role="item-select"]');
@@ -2668,7 +2705,7 @@ const bindEvents = () => {
                     return;
                 }
 
-                send('createDelivery', { vehicle, label, items });
+                send('createDelivery', { vehicle, label, items, route: route || undefined });
                 form.reset();
                 const container = form.querySelector('[data-role="delivery-items"]');
                 if (container) container.innerHTML = '';

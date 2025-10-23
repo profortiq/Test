@@ -40,6 +40,14 @@ local function VecToTable(vec)
     return vec
 end
 
+local function NormalizeCoords(data)
+    if not data then return nil end
+    if data.coords then
+        return VecToTable(data.coords)
+    end
+    return VecToTable(data)
+end
+
 local function TableToVec3(data)
     if not data then return nil end
     if data.x and data.y and data.z then
@@ -178,9 +186,64 @@ end
 
 local function DistanceBetween(a, b)
     if not a or not b then return 0 end
+    if a.coords then a = a.coords end
+    if b.coords then b = b.coords end
+    if not a or not b then return 0 end
     local vecA = vector3(a.x + 0.0, a.y + 0.0, a.z + 0.0)
     local vecB = vector3(b.x + 0.0, b.y + 0.0, b.z + 0.0)
     return #(vecA - vecB)
+end
+
+local function ResolveRoute(shop, selection)
+    if not selection or selection == '' then return nil end
+
+    local metadata = shop.metadata or {}
+    local creator = metadata.creator or {}
+    local routes = creator.routes or {}
+    if type(routes) ~= 'table' then return nil end
+
+    local chosen
+    local desired = selection
+    if type(desired) == 'string' then
+        local numeric = tonumber(desired)
+        if numeric then
+            desired = numeric
+        end
+    end
+
+    if type(desired) == 'number' then
+        chosen = routes[desired]
+    else
+        for _, route in ipairs(routes) do
+            local identifier = route.id or route.label
+            if identifier and tostring(identifier) == tostring(selection) then
+                chosen = route
+                break
+            end
+        end
+    end
+
+    if not chosen then return nil end
+
+    local normalized = {
+        id = chosen.id,
+        label = chosen.label,
+        points = {},
+    }
+
+    for _, point in ipairs(chosen.points or {}) do
+        local coords = NormalizeCoords(point)
+        if coords and coords.x and coords.y and coords.z then
+            normalized.points[#normalized.points + 1] = {
+                coords = coords,
+                label = point.label,
+            }
+        end
+    end
+
+    if #normalized.points == 0 then return nil end
+
+    return normalized
 end
 
 local function GeneratePlate()
@@ -262,7 +325,20 @@ function Deliveries.Create(shop, citizenid, data)
         }
     end
 
-    local distance = DistanceBetween(depot.coords, dropoff.coords)
+    depot.coords = NormalizeCoords(depot.coords) or NormalizeCoords(shop.coords)
+    dropoff.coords = NormalizeCoords(dropoff.coords) or NormalizeCoords(shop.coords)
+
+    local routeMetadata = ResolveRoute(shop, data.route)
+    local distance = 0
+    local lastCoords = depot.coords
+    if routeMetadata and routeMetadata.points then
+        for _, point in ipairs(routeMetadata.points) do
+            distance = distance + DistanceBetween(lastCoords, point.coords)
+            lastCoords = point.coords
+        end
+    end
+    distance = distance + DistanceBetween(lastCoords, dropoff.coords)
+
     local payout = math.floor((Config.DeliveryBasePayout or 0) + totalQuantity * 2)
     local penalty = Config.DeliveryFailurePenalty or 0
     local metadata = {
@@ -275,6 +351,10 @@ function Deliveries.Create(shop, citizenid, data)
         fuelModifier = vehicleConfig.fuelModifier,
         totalQuantity = totalQuantity,
     }
+
+    if routeMetadata then
+        metadata.route = routeMetadata
+    end
 
     local deliveryId = MySQL.insert.await([[INSERT INTO ws_shop_deliveries
         (shop_id, identifier, type, status, citizenid, vehicle_model, vehicle_plate, capacity, distance, payout, penalty, metadata)
@@ -400,6 +480,15 @@ function Deliveries.Start(shop, player, deliveryIdentifier, vehicleKey, customPl
     SetVehicleFuelLevel(vehicle, 100.0)
     local netId = NetworkGetNetworkIdFromEntity(vehicle)
 
+    depot.coords = NormalizeCoords(depot.coords) or NormalizeCoords(shop.coords)
+    dropoff.coords = NormalizeCoords(dropoff.coords) or NormalizeCoords(shop.coords)
+    local routeMetadata = delivery.metadata and delivery.metadata.route
+    if routeMetadata and routeMetadata.points then
+        for _, point in ipairs(routeMetadata.points) do
+            point.coords = NormalizeCoords(point.coords) or NormalizeCoords(point)
+        end
+    end
+
     delivery.status = 'active'
     delivery.citizenid = player.PlayerData.citizenid
     delivery.vehicle_model = desiredKey or delivery.vehicle_model
@@ -430,7 +519,7 @@ function Deliveries.Start(shop, player, deliveryIdentifier, vehicleKey, customPl
     }, {
         coords = delivery.metadata.dropoff.coords,
         label = delivery.metadata.dropoff.label,
-    }, netId, plate, vehicleLabel, fuelCost)
+    }, netId, plate, vehicleLabel, fuelCost, delivery.metadata.route)
 
     if Config.Notifications and Config.Notifications.phone and delivery.metadata.depot then
         local subject = Config.Notifications.phone.subjectDelivery:format(shop.label)

@@ -55,9 +55,7 @@ Stelle sicher, dass alle Ressourcen aktuell sind und **vor** `ws-shopsystem` in 
 - Scheitert das Speichern (z. B. wegen fehlender Berechtigungen oder Datenbankproblemen), informiert das UI und es bleiben keine
   halbfertigen Einträge zurück.
 
-Im Bossmenü der Spieler existiert zusätzlich der Tab „Aufträge“ (Sidebar-Button), in dem alle offenen Liefermissionen des Shops
-auflisten, neue Aufträge geplant und mit einem Klick gestartet werden können. Beim Start spawnt das konfigurierte Fahrzeug am
-zugewiesenen Depot und die zuvor definierten Routenpunkte werden genutzt.
+Im Bossmenü der Spieler existiert zusätzlich der Tab „Aufträge“ (Sidebar-Button). Links planst du neue Touren inklusive Fahrzeug- und optionaler Routenauswahl, rechts erscheint sofort die Liste aller offenen Liefermissionen samt Stopps. Von dort lassen sich Aufträge direkt starten. Beim Start spawnt das konfigurierte Fahrzeug am Depot, anschließend führen dich die definierten Routenpunkte nacheinander zum finalen Abladepunkt.
 
 ---
 

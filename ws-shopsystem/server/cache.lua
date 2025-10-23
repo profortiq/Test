@@ -319,7 +319,7 @@ local function BuildShop(row)
         creator.routes = {}
         for _, route in ipairs(routeRows) do
             local points = MySQL.query.await('SELECT label, x, y, z FROM ws_shop_route_points WHERE route_id = ? ORDER BY sort_index ASC, id ASC', { route.id }) or {}
-            local mapped = { label = route.label, points = {} }
+            local mapped = { id = route.id, label = route.label, points = {} }
             for _, point in ipairs(points) do
                 mapped.points[#mapped.points + 1] = {
                     x = tonumber(point.x) or 0.0,
