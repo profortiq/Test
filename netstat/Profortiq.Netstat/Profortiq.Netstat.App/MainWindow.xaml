@@ -1,0 +1,16 @@
+<Window x:Class="Profortiq.Netstat.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:lvc="http://livecharts.com/"
+        mc:Ignorable="d"
+        Title="Profortiq Netstat" Height="450" Width="800">
+    <Grid Margin="16">
+        <StackPanel>
+            <TextBlock Text="Netstat Dashboard" FontSize="24" FontWeight="Bold" Margin="0 0 0 16" />
+            <TextBlock Text="Sample chart placeholder" Margin="0 0 0 8" />
+            <lvc:CartesianChart x:Name="MainChart" Height="300" />
+        </StackPanel>
+    </Grid>
+</Window>

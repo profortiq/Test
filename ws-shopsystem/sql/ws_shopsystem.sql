@@ -5,6 +5,12 @@ CREATE TABLE IF NOT EXISTS `ws_shops` (
     `type` VARCHAR(60) NOT NULL,
     `coords` LONGTEXT DEFAULT NULL,
     `heading` FLOAT DEFAULT 0,
+    `ped_model` VARCHAR(60) DEFAULT NULL,
+    `ped_scenario` VARCHAR(120) DEFAULT NULL,
+    `zone_length` FLOAT DEFAULT 2.0,
+    `zone_width` FLOAT DEFAULT 2.0,
+    `zone_min_z` FLOAT DEFAULT 0,
+    `zone_max_z` FLOAT DEFAULT 0,
     `level` INT(11) NOT NULL DEFAULT 1,
     `xp` INT(11) NOT NULL DEFAULT 0,
     `owner_citizenid` VARCHAR(50) DEFAULT NULL,
@@ -13,6 +19,8 @@ CREATE TABLE IF NOT EXISTS `ws_shops` (
     `purchase_price` INT(11) NOT NULL DEFAULT 0,
     `sell_price` INT(11) NOT NULL DEFAULT 0,
     `discount` INT(11) NOT NULL DEFAULT 0,
+    `credit_limit` INT(11) NOT NULL DEFAULT 0,
+    `credit_used` INT(11) NOT NULL DEFAULT 0,
     `webhook` TEXT DEFAULT NULL,
     `metadata` LONGTEXT DEFAULT NULL,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -39,6 +47,105 @@ CREATE TABLE IF NOT EXISTS `ws_shop_inventory` (
     PRIMARY KEY (`id`),
     KEY `shop_item` (`shop_id`, `item`),
     CONSTRAINT `fk_inventory_shop` FOREIGN KEY (`shop_id`) REFERENCES `ws_shops` (`id`) ON DELETE CASCADE
+);
+
+ALTER TABLE `ws_shops`
+    ADD COLUMN IF NOT EXISTS `ped_model` VARCHAR(60) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS `ped_scenario` VARCHAR(120) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS `zone_length` FLOAT DEFAULT 2.0,
+    ADD COLUMN IF NOT EXISTS `zone_width` FLOAT DEFAULT 2.0,
+    ADD COLUMN IF NOT EXISTS `zone_min_z` FLOAT DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS `zone_max_z` FLOAT DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS `ws_shop_dropoffs` (
+    `id` INT(11) NOT NULL AUTO_INCREMENT,
+    `shop_id` INT(11) NOT NULL,
+    `sort_index` INT(11) NOT NULL DEFAULT 0,
+    `label` VARCHAR(120) DEFAULT NULL,
+    `x` FLOAT NOT NULL DEFAULT 0,
+    `y` FLOAT NOT NULL DEFAULT 0,
+    `z` FLOAT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`),
+    KEY `dropoff_shop_idx` (`shop_id`, `sort_index`),
+    CONSTRAINT `fk_dropoff_shop` FOREIGN KEY (`shop_id`) REFERENCES `ws_shops` (`id`) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS `ws_shop_depots` (
+    `id` INT(11) NOT NULL AUTO_INCREMENT,
+    `shop_id` INT(11) NOT NULL,
+    `sort_index` INT(11) NOT NULL DEFAULT 0,
+    `label` VARCHAR(120) DEFAULT NULL,
+    `x` FLOAT NOT NULL DEFAULT 0,
+    `y` FLOAT NOT NULL DEFAULT 0,
+    `z` FLOAT NOT NULL DEFAULT 0,
+    `heading` FLOAT DEFAULT 0,
+    PRIMARY KEY (`id`),
+    KEY `depot_shop_idx` (`shop_id`, `sort_index`),
+    CONSTRAINT `fk_depot_shop` FOREIGN KEY (`shop_id`) REFERENCES `ws_shops` (`id`) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS `ws_shop_vehicle_spawns` (
+    `id` INT(11) NOT NULL AUTO_INCREMENT,
+    `shop_id` INT(11) NOT NULL,
+    `sort_index` INT(11) NOT NULL DEFAULT 0,
+    `label` VARCHAR(120) DEFAULT NULL,
+    `x` FLOAT NOT NULL DEFAULT 0,
+    `y` FLOAT NOT NULL DEFAULT 0,
+    `z` FLOAT NOT NULL DEFAULT 0,
+    `heading` FLOAT DEFAULT 0,
+    PRIMARY KEY (`id`),
+    KEY `vehicle_spawn_shop_idx` (`shop_id`, `sort_index`),
+    CONSTRAINT `fk_vehicle_spawn_shop` FOREIGN KEY (`shop_id`) REFERENCES `ws_shops` (`id`) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS `ws_shop_allowed_vehicles` (
+    `id` INT(11) NOT NULL AUTO_INCREMENT,
+    `shop_id` INT(11) NOT NULL,
+    `sort_index` INT(11) NOT NULL DEFAULT 0,
+    `vehicle_key` VARCHAR(64) NOT NULL,
+    `model` VARCHAR(60) DEFAULT NULL,
+    `label` VARCHAR(120) DEFAULT NULL,
+    `price` INT(11) NOT NULL DEFAULT 0,
+    `min_level` INT(11) NOT NULL DEFAULT 1,
+    `capacity` INT(11) NOT NULL DEFAULT 0,
+    `trunk_size` INT(11) NOT NULL DEFAULT 0,
+    `fuel_modifier` FLOAT NOT NULL DEFAULT 1.0,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `vehicle_unique` (`shop_id`, `vehicle_key`),
+    CONSTRAINT `fk_allowed_vehicle_shop` FOREIGN KEY (`shop_id`) REFERENCES `ws_shops` (`id`) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS `ws_shop_product_categories` (
+    `id` INT(11) NOT NULL AUTO_INCREMENT,
+    `shop_id` INT(11) NOT NULL,
+    `sort_index` INT(11) NOT NULL DEFAULT 0,
+    `category` VARCHAR(120) NOT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `product_category_unique` (`shop_id`, `category`),
+    CONSTRAINT `fk_product_category_shop` FOREIGN KEY (`shop_id`) REFERENCES `ws_shops` (`id`) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS `ws_shop_routes` (
+    `id` INT(11) NOT NULL AUTO_INCREMENT,
+    `shop_id` INT(11) NOT NULL,
+    `sort_index` INT(11) NOT NULL DEFAULT 0,
+    `label` VARCHAR(120) DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `route_shop_idx` (`shop_id`, `sort_index`),
+    CONSTRAINT `fk_route_shop` FOREIGN KEY (`shop_id`) REFERENCES `ws_shops` (`id`) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS `ws_shop_route_points` (
+    `id` INT(11) NOT NULL AUTO_INCREMENT,
+    `route_id` INT(11) NOT NULL,
+    `sort_index` INT(11) NOT NULL DEFAULT 0,
+    `label` VARCHAR(120) DEFAULT NULL,
+    `x` FLOAT NOT NULL DEFAULT 0,
+    `y` FLOAT NOT NULL DEFAULT 0,
+    `z` FLOAT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`),
+    KEY `route_point_idx` (`route_id`, `sort_index`),
+    CONSTRAINT `fk_route_point_route` FOREIGN KEY (`route_id`) REFERENCES `ws_shop_routes` (`id`) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS `ws_shop_employees` (
