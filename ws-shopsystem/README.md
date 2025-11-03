@@ -33,8 +33,29 @@ Stelle sicher, dass alle Ressourcen aktuell sind und **vor** `ws-shopsystem` in 
    ensure ws-shopsystem
    ```
 
-4. **Server neu starten**  
+4. **Server neu starten**
    Nach dem Neustart seedet das Script automatisch alle Shops aus der `config.lua` in die Datenbank.
+
+---
+
+## Admin-Creator & Shopverwaltung
+
+- Öffne das Creator-Panel mit `/shopadmin` (oder der in `config.lua` definierten Taste). Du landest zunächst auf einem Dashboard,
+  das alle Shops inklusive Level, Kontostand, Typ und Koordinaten anzeigt. Von dort oder über die Shop-Liste links gelangst du in den Editor.
+- Im Editor findest du rechts eine Abschnitts-Navigation. Damit springst du ohne Scrollen zu Allgemein, Standort, NPC, Blip, Lieferpunkten,
+  Depots, Fahrzeug-Spawns, Fahrzeugverwaltung, Produktkategorien und Routen.
+- Ped, Zone, Liefer- und Depotpunkte sowie Fahrzeug-Spawns lassen sich direkt erfassen – Koordinaten werden auf Wunsch per
+  „Position“-Button vom eigenen Charakter übernommen. Der integrierte Blip-Creator unterstützt Sprite, Farbe, Skalierung, Label und
+  Short-Range-Einstellung pro Shop.
+- Jeder Shop besitzt eine eigene Fahrzeugverwaltung. Modelle, Labels, Preise, Mindestlevel, Kapazitäten, Kofferraumgrößen und
+  Spritfaktoren werden vollständig über das UI gepflegt und landen nach dem Speichern automatisch in `ws_shop_allowed_vehicles`.
+  Die alte Tabelle `WSShopConfig.DeliveryVehicles` entfällt damit komplett.
+- Dropoffs, Depots, Spawnpunkte, Liefer-Routen und Produktkategorien werden beim Speichern ebenfalls in die Datenbank geschrieben
+  und stehen nach einem Reload sofort im Creator sowie in der Welt bereit.
+- Scheitert das Speichern (z. B. wegen fehlender Berechtigungen oder Datenbankproblemen), informiert das UI und es bleiben keine
+  halbfertigen Einträge zurück.
+
+Im Bossmenü der Spieler existiert zusätzlich der Tab „Aufträge“ (Sidebar-Button). Links planst du neue Touren inklusive Fahrzeug- und optionaler Routenauswahl, rechts erscheint sofort die Liste aller offenen Liefermissionen samt Stopps. Von dort lassen sich Aufträge direkt starten. Beim Start spawnt das konfigurierte Fahrzeug am Depot, anschließend führen dich die definierten Routenpunkte nacheinander zum finalen Abladepunkt.
 
 ---
 
@@ -43,12 +64,14 @@ Stelle sicher, dass alle Ressourcen aktuell sind und **vor** `ws-shopsystem` in 
 Alle Einstellungen findest du in `config.lua`. Wichtige Bereiche:
 
 - **Allgemein (`WSShopConfig`)**: Sprache, Ziel-Modus (`UseTarget`), Low-Stock-Schwellen, Benachrichtigungen, Befehle. `InteractionKey` und `ManagementKey` dienen als Fallback-Steuerung, falls `qb-target` nicht genutzt wird.
+- **Admin-Zugriff (`WSShopConfig.AdminAccess`)**: Definiere, welche QB-Core Berechtigungen, Ace-Gruppen, Identifiers oder CitizenIDs den Shop-Creator öffnen dürfen.
 - **XP / Level (`WSShopConfig.XP`, `WSShopConfig.Levels`)**: Erfahrung pro Aktion, freischaltbare Features, Fahrzeuge, Rabatte.
 - **Rollen (`WSShopConfig.Roles`)**: Berechtigungen, Standardlöhne, Zugriff auf Menüpunkte.
 - **Shoptypen (`WSShopConfig.ShopTypes`)**: Artikel, Preise, Icons, Kauf-/Verkaufspreise.
-- **Shops (`WSShopConfig.Shops`)**: Weltposition, Ped, Blip, Standardlager.
-- **Depots & Fahrzeuge (`WSShopConfig.Depots`, `WSShopConfig.DeliveryVehicles`)**: Lieferorte, Kapazitäten, Levelanforderungen.
+- **Shop-Liste (`WSShopConfig.Shops`)**: Wird bewusst leer gelassen. Neue Shops werden vollständig über das Admin-Panel erstellt und landen direkt in der Datenbank.
+- **Depots (`WSShopConfig.Depots`)**: Optionale globale Vorschläge für Depots, falls der Creator keine individuellen Punkte setzt. Fahrzeuge werden ausschließlich im Admin-Panel gepflegt und landen mitsamt Preis-, Level- und Kapazitätsangaben direkt in der Datenbank.
 - **Benachrichtigungen (`WSShopConfig.Notifications`)**: Mail-Texte, Webhook-Einstellungen.
+- **UI-Notifications**: Das Panel blendet wichtige Ereignisse unten mittig ein (Erfolg, Fehler, Warnungen). Diese Hinweise erscheinen zusätzlich zu den klassischen QB-Notifications.
 
 > **Hinweis:** Alle Umlaute wurden als ASCII (z. B. `ae`, `oe`) hinterlegt, damit selbst bei ANSI-Encoding keine Probleme auftreten. Passe Texte nach Bedarf an.
 
@@ -64,8 +87,15 @@ Alle Einstellungen findest du in `config.lua`. Wichtige Bereiche:
 
 ### Verwaltung (Bossmenü)
 - Öffne den Shop → klicke auf „Verwaltung“ (Owner/Manager-Rolle benötigt).  
-- Tabs: `Dashboard`, `Lager`, `Mitarbeiter`, `Lieferungen`, `Finanzen`, `Fahrzeuge`.  
+- Tabs: `Dashboard`, `Lager`, `Mitarbeiter`, `Aufträge`, `Finanzen`, `Fahrzeuge`.
 - Preise anpassen, Mitarbeiter einstellen/entlassen, Lieferungen beauftragen, Ein-/Auszahlungen.
+- Im Tab `Fahrzeuge` können Shopbesitzer die freigeschalteten Lieferfahrzeuge sehen und kaufen. Welche Modelle zur Auswahl stehen,
+  definiert der Admin im Creator. Dort lassen sich Modellname (Spawncode), Preis, Mindestlevel, Kapazität, Kofferraum und
+  Spritfaktor pro Shop speichern – komplett ohne Einträge in der `config.lua`.
+- Der Tab `Finanzen` zeigt jetzt Kontostand, Kreditrahmen, offene Beträge und verfügbare Mittel in einer Bank-ähnlichen Übersicht.
+  Einzahlungen, Auszahlungen, Kreditaufnahme und Tilgung werden direkt im Panel ausgelöst und sofort in der Datenbank verbucht.
+- `Aufträge` ist in eine Auftragsliste und ein Planungsfenster aufgeteilt. Start-Buttons stehen direkt bei jedem Auftrag bereit,
+  während die Erstellung unten rechts läuft – inklusive Kapazitätsanzeige und Fahrzeug-Checks.
 
 ### Liefermissionen
 1. Erstelle im Tab „Lieferungen“ eine manuelle Bestellung oder warte auf eine automatische, wenn Lagerbestand fällt.  
@@ -85,7 +115,9 @@ Alle Einstellungen findest du in `config.lua`. Wichtige Bereiche:
 
 | Befehl           | Beschreibung                          | Berechtigung (QBCore ACL) |
 |------------------|---------------------------------------|---------------------------|
-| `/shopadmin`     | Admin-Übersicht aller Shops öffnen    | `admin`                   |
+| `/shopadmin`     | Admin-Übersicht aller Shops öffnen    | Laut `WSShopConfig.AdminAccess` |
+
+- Der Chat-Befehl ruft intern den Callback `ws-shopsystem:server:adminOpen` auf. Eigene Ressourcen können denselben Callback nutzen, um die aktuelle Creator-Payload inkl. Fehlermeldung bei fehlenden Rechten zu erhalten.
 
 Weitere Aktionen laufen über den NUI-Workflow oder `qb-target` (Interaktionen am Shop).
 
@@ -97,8 +129,9 @@ Weitere Aktionen laufen über den NUI-Workflow oder `qb-target` (Interaktionen a
 - `ws_shop_inventory` – Lagerbestand, Preise, Levelanforderungen  
 - `ws_shop_employees` – Mitarbeiterliste inkl. Rollen & Status  
 - `ws_shop_finance_log` – Finanztransaktionen (Ein-/Auszahlungen, Verkäufe, Strafen)  
-- `ws_shop_deliveries` / `ws_shop_delivery_items` – Lieferaufträge und Fracht  
-- `ws_shop_vehicles` – Persistente Lieferfahrzeuge (Placeholder für spätere Erweiterungen)  
+- `ws_shop_deliveries` / `ws_shop_delivery_items` – Lieferaufträge und Fracht
+- `ws_shop_allowed_vehicles` – Fahrzeugpools pro Shop (Key, Modell, Preis, Level, Kapazität, Verbrauch)
+- `ws_shop_vehicles` – Persistente Lieferfahrzeuge (Placeholder für spätere Erweiterungen)
 - `ws_shop_statistics_daily` – Tagesstatistiken (Umsatz, Lieferungen, XP)  
 
 ---

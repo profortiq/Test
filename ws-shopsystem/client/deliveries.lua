@@ -21,6 +21,28 @@ local DeliveryThreadActive = false
 local RouteBlip = nil
 local VehicleBlip = nil
 
+local function NormalizeRoute(route)
+    if type(route) ~= 'table' then return nil end
+    local points = route.points
+    if type(points) ~= 'table' or #points == 0 then return nil end
+    local normalized = {
+        id = route.id,
+        label = route.label,
+        points = {},
+    }
+    for _, point in ipairs(points) do
+        local coords = point.coords or point
+        if coords and coords.x and coords.y and coords.z then
+            normalized.points[#normalized.points + 1] = {
+                coords = vector3(coords.x + 0.0, coords.y + 0.0, coords.z + 0.0),
+                label = point.label,
+            }
+        end
+    end
+    if #normalized.points == 0 then return nil end
+    return normalized
+end
+
 local function RemoveRouteBlip()
     if RouteBlip and DoesBlipExist(RouteBlip) then
         RemoveBlip(RouteBlip)
@@ -92,12 +114,52 @@ local function HandleDeliveryLoop()
                     if dist < 2.0 then
                         DrawText3D(depot.coords.x, depot.coords.y, depot.coords.z + 0.1, '[E] Waren laden')
                         if IsControlJustReleased(0, 38) then
-                            ActiveDelivery.stage = 'dropoff'
                             ActiveDelivery.startTime = GetGameTimer()
-                            CreateRouteBlip(ActiveDelivery.dropoff.coords, 'Lieferung abgeben', 2, 478)
-                            QBCore.Functions.Notify('Waren geladen. Bringe sie zum Shop.', 'success')
+                            if ActiveDelivery.route then
+                                ActiveDelivery.route.index = 1
+                                ActiveDelivery.stage = 'route'
+                                local firstPoint = ActiveDelivery.route.points[1]
+                                if firstPoint then
+                                    CreateRouteBlip(firstPoint.coords, firstPoint.label or 'Lieferadresse', 2, 478)
+                                    QBCore.Functions.Notify('Waren geladen. Fahre zur ersten Lieferadresse.', 'success')
+                                else
+                                    ActiveDelivery.stage = 'dropoff'
+                                    CreateRouteBlip(ActiveDelivery.dropoff.coords, 'Lieferung abgeben', 2, 478)
+                                    QBCore.Functions.Notify('Waren geladen. Bringe sie zum Shop.', 'success')
+                                end
+                            else
+                                ActiveDelivery.stage = 'dropoff'
+                                CreateRouteBlip(ActiveDelivery.dropoff.coords, 'Lieferung abgeben', 2, 478)
+                                QBCore.Functions.Notify('Waren geladen. Bringe sie zum Shop.', 'success')
+                            end
                         end
                     end
+                end
+            elseif ActiveDelivery.stage == 'route' then
+                local route = ActiveDelivery.route
+                local index = route and route.index or 1
+                local point = route and route.points and route.points[index]
+                if point then
+                    local dist = Distance({ x = coords.x, y = coords.y, z = coords.z }, { x = point.coords.x, y = point.coords.y, z = point.coords.z })
+                    DrawMarker(1, point.coords.x, point.coords.y, point.coords.z - 1.0, 0, 0, 0, 0, 0, 0, 2.0, 2.0, 1.0, 255, 120, 70, 120, false, false, 2, false, nil, nil, false)
+                    if dist < 2.0 then
+                        DrawText3D(point.coords.x, point.coords.y, point.coords.z + 0.1, '[E] Lieferung abgeben')
+                        if IsControlJustReleased(0, 38) then
+                            route.index = index + 1
+                            local nextPoint = route.points[route.index]
+                            if nextPoint then
+                                CreateRouteBlip(nextPoint.coords, nextPoint.label or ('Lieferadresse ' .. route.index), 2, 478)
+                                QBCore.Functions.Notify(('Nächster Halt: %s'):format(nextPoint.label or 'Lieferadresse'), 'primary')
+                            else
+                                ActiveDelivery.stage = 'dropoff'
+                                CreateRouteBlip(ActiveDelivery.dropoff.coords, 'Lieferung abschließen', 2, 478)
+                                QBCore.Functions.Notify('Zwischenstopps abgeschlossen. Kehre zum Shop zurück.', 'success')
+                            end
+                        end
+                    end
+                else
+                    ActiveDelivery.stage = 'dropoff'
+                    CreateRouteBlip(ActiveDelivery.dropoff.coords, 'Lieferung abgeben', 2, 478)
                 end
             elseif ActiveDelivery.stage == 'dropoff' then
                 local dropoff = ActiveDelivery.dropoff
@@ -124,9 +186,11 @@ local function HandleDeliveryLoop()
     end)
 end
 
-RegisterNetEvent('ws-shopsystem:client:deliveryStarted', function(identifier, deliveryIdentifier, pickup, dropoff, vehicleNetId, vehiclePlate, vehicleModel, fuelCost)
+RegisterNetEvent('ws-shopsystem:client:deliveryStarted', function(identifier, deliveryIdentifier, pickup, dropoff, vehicleNetId, vehiclePlate, vehicleModel, fuelCost, route)
     if not pickup or not pickup.coords then return end
     if not dropoff or not dropoff.coords then return end
+
+    local normalizedRoute = NormalizeRoute(route)
 
     ActiveDelivery = {
         shopIdentifier = identifier,
@@ -145,6 +209,7 @@ RegisterNetEvent('ws-shopsystem:client:deliveryStarted', function(identifier, de
         vehicleNetId = vehicleNetId,
         vehiclePlate = vehiclePlate,
         vehicleModel = vehicleModel,
+        route = normalizedRoute,
     }
 
     CreateRouteBlip(pickup.coords, 'Waren abholen', 1, Config.DepotBlipSprite or 478)
