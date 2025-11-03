@@ -372,7 +372,7 @@ function Deliveries.Create(shop, citizenid, data)
 
     local insertOk, deliveryIdOrErr = pcall(function()
         return MySQL.insert.await([[INSERT INTO ws_shop_deliveries
-            (shop_id, identifier, type, status, citizenid, vehicle_model, vehicle_plate, capacity, distance, payout, penalty, metadata)
+            (shop_id, identifier, `type`, status, citizenid, vehicle_model, vehicle_plate, capacity, distance, payout, penalty, metadata)
             VALUES (?, ?, ?, 'pending', ?, ?, NULL, ?, ?, ?, ?, ?)
         ]], {
             shop.id,
