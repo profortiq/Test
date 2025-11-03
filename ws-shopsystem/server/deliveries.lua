@@ -1,6 +1,7 @@
 local QBCore = exports['qb-core']:GetCoreObject()
 local Config = WSShopConfig
 local Utils = WSShops.Utils
+local Migrations = WSShops and WSShops.Migrations
 
 WSShops.Deliveries = WSShops.Deliveries or {}
 local Deliveries = WSShops.Deliveries
@@ -257,9 +258,22 @@ local function GeneratePlate()
     return plate
 end
 
+local function EnsureDeliveryTables()
+    if not Migrations or not Migrations.EnsureDeliveryTables then return end
+    Migrations.EnsureDeliveryTables()
+end
+
+local function ReportDatabaseError(context, err)
+    local message = ('Database error during %s: %s'):format(context, err or 'unknown')
+    print('[ws-shopsystem] ' .. message)
+    Utils.Debug(message)
+end
+
 function Deliveries.Create(shop, citizenid, data)
     if not shop or not data then return nil end
     if not data.items or #data.items == 0 then return nil end
+
+    EnsureDeliveryTables()
 
     local identifier = GenerateIdentifier(shop)
     local ownership = (shop.metadata and shop.metadata.vehicleUnlocks) or {}
@@ -356,34 +370,59 @@ function Deliveries.Create(shop, citizenid, data)
         metadata.route = routeMetadata
     end
 
-    local deliveryId = MySQL.insert.await([[INSERT INTO ws_shop_deliveries
-        (shop_id, identifier, type, status, citizenid, vehicle_model, vehicle_plate, capacity, distance, payout, penalty, metadata)
-        VALUES (?, ?, ?, 'pending', ?, ?, NULL, ?, ?, ?, ?, ?)
-    ]], {
-        shop.id,
-        identifier,
-        data.type or 'manual',
-        citizenid,
-        vehicleKey,
-        nil,
-        capacity,
-        distance,
-        payout,
-        penalty,
-        EncodeMetadata(metadata),
-    })
-
-    if not deliveryId then return nil end
-
-    for _, item in ipairs(items) do
-        MySQL.insert.await([[INSERT INTO ws_shop_delivery_items (delivery_id, item, label, quantity)
-            VALUES (?, ?, ?, ?)
+    local insertOk, deliveryIdOrErr = pcall(function()
+        return MySQL.insert.await([[INSERT INTO ws_shop_deliveries
+            (shop_id, identifier, type, status, citizenid, vehicle_model, vehicle_plate, capacity, distance, payout, penalty, metadata)
+            VALUES (?, ?, ?, 'pending', ?, ?, NULL, ?, ?, ?, ?, ?)
         ]], {
-            deliveryId,
-            item.item,
-            item.label,
-            item.quantity,
+            shop.id,
+            identifier,
+            data.type or 'manual',
+            citizenid,
+            vehicleKey,
+            nil,
+            capacity,
+            distance,
+            payout,
+            penalty,
+            EncodeMetadata(metadata),
         })
+    end)
+
+    if not insertOk then
+        ReportDatabaseError('delivery creation', deliveryIdOrErr)
+        return nil, 'database'
+    end
+
+    local deliveryId = tonumber(deliveryIdOrErr)
+    if not deliveryId or deliveryId <= 0 then
+        ReportDatabaseError('delivery creation', 'no insert id returned')
+        return nil, 'database'
+    end
+
+    local itemsPersisted = true
+    for _, item in ipairs(items) do
+        local okItem, errItem = pcall(function()
+            return MySQL.insert.await([[INSERT INTO ws_shop_delivery_items (delivery_id, item, label, quantity)
+                VALUES (?, ?, ?, ?)
+            ]], {
+                deliveryId,
+                item.item,
+                item.label,
+                item.quantity,
+            })
+        end)
+        if not okItem then
+            ReportDatabaseError('delivery item persistence', errItem)
+            itemsPersisted = false
+            break
+        end
+    end
+
+    if not itemsPersisted then
+        MySQL.update.await('DELETE FROM ws_shop_delivery_items WHERE delivery_id = ?', { deliveryId })
+        MySQL.update.await('DELETE FROM ws_shop_deliveries WHERE id = ?', { deliveryId })
+        return nil, 'database'
     end
 
     UpdateCachedDeliveries(shop)

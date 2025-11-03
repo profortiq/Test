@@ -1,3 +1,7 @@
+WSShops = WSShops or {}
+WSShops.Migrations = WSShops.Migrations or {}
+
+local Migrations = WSShops.Migrations
 local prefix = '[ws-shopsystem] '
 
 local function log(message, ...)
@@ -367,7 +371,21 @@ local columnStatements = {
     { 'ws_shop_allowed_vehicles', 'fuel_modifier', 'ALTER TABLE `ws_shop_allowed_vehicles` ADD COLUMN IF NOT EXISTS `fuel_modifier` FLOAT NOT NULL DEFAULT 1.0 AFTER `trunk_size`' },
 }
 
-local function runMigrations()
+local ranMigrations = false
+
+local function ensureSpecificTables(targets)
+    if type(targets) ~= 'table' then return end
+    for _, name in ipairs(targets) do
+        for _, entry in ipairs(tableStatements) do
+            if entry[1] == name then
+                ensureTable(entry[1], entry[2])
+                break
+            end
+        end
+    end
+end
+
+local function executeMigrations()
     for _, entry in ipairs(tableStatements) do
         ensureTable(entry[1], entry[2])
     end
@@ -377,10 +395,41 @@ local function runMigrations()
     end
 end
 
-MySQL.ready(function()
-    local ok, err = pcall(runMigrations)
+local function tryRunMigrations()
+    if ranMigrations then return true end
+
+    local ok, err = pcall(executeMigrations)
     if not ok then
         warn('Database migration failed: %s', err)
+        return false
     end
+
+    ranMigrations = true
+    return true
+end
+
+Migrations.Ensure = function()
+    return tryRunMigrations()
+end
+
+Migrations.EnsureDeliveryTables = function()
+    local success = tryRunMigrations()
+    if not success then return false end
+    ensureSpecificTables({
+        'ws_shop_deliveries',
+        'ws_shop_delivery_items',
+        'ws_shop_routes',
+        'ws_shop_route_points',
+    })
+    return true
+end
+
+MySQL.ready(function()
+    tryRunMigrations()
+end)
+
+CreateThread(function()
+    Wait(1000)
+    tryRunMigrations()
 end)
 
